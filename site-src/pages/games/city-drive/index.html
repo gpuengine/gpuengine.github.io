@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<!-- Copyright (C) 2026 Abhishek Sengar -->
+<html lang="en">
+<head>
+{{include head.html}}
+<title>City Drive — Free WebGPU Driving Game in Your Browser | gpuengine</title>
+<meta name="description" content="City Drive is a free open-world driving game that runs in your browser with WebGPU. Explore an endless procedural city with traffic, bridges and waterfronts.">
+<meta property="og:title" content="City Drive — Free WebGPU Driving Game">
+<meta property="og:type" content="website">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  "name": "City Drive",
+  "description": "An open-world driving game through an endless procedural city, rendered with WebGPU.",
+  "url": "{{canonical}}",
+  "image": "{{origin}}/site/media/hero-poster.jpg",
+  "genre": ["Driving", "Open world"],
+  "gamePlatform": "Web browser",
+  "applicationCategory": "Game",
+  "operatingSystem": "Any",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+</head>
+<body>
+{{include header.html}}
+<main id="main">
+  <header class="page-header">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/games/">Games</a> / City Drive</nav>
+    <h1>City Drive</h1>
+    <p>An endless city, generated as you drive. Downtown towers give way to suburbs, parks and the waterfront, with live traffic on every street.</p>
+  </header>
+
+  <section class="section">
+    <div class="feature-game">
+      <img src="/site/media/hero-poster.jpg" alt="City Drive gameplay: a car on a city street lined with buildings and trees" width="1920" height="1080">
+      <div>
+        <div class="button-row">
+          <a class="button" href="/site/games/city-drive/play/">Play City Drive</a>
+        </div>
+        <p class="note">Needs a browser with WebGPU: recent Chrome, Edge or Safari, or Firefox on Windows. A laptop with a dedicated or modern integrated GPU is recommended.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="controls-heading">
+    <h2 id="controls-heading">Controls</h2>
+    <table class="support-table">
+      <thead><tr><th>Key</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>W</kbd> / <kbd>↑</kbd></td><td>Accelerate</td></tr>
+        <tr><td><kbd>S</kbd> / <kbd>↓</kbd></td><td>Brake and reverse</td></tr>
+        <tr><td><kbd>A</kbd> <kbd>D</kbd> / <kbd>←</kbd> <kbd>→</kbd></td><td>Steer</td></tr>
+        <tr><td><kbd>Space</kbd></td><td>Handbrake</td></tr>
+        <tr><td><kbd>C</kbd></td><td>Cycle camera: chase, action, hood, heli</td></tr>
+        <tr><td><kbd>Z</kbd> / <kbd>X</kbd></td><td>Auto-steer / cruise hold</td></tr>
+        <tr><td><kbd>Q</kbd> / <kbd>E</kbd></td><td>Turn left / right at the next junction</td></tr>
+        <tr><td><kbd>B</kbd></td><td>Change biome</td></tr>
+        <tr><td><kbd>T</kbd></td><td>Toggle traffic and people</td></tr>
+        <tr><td><kbd>R</kbd></td><td>Reset car to the road</td></tr>
+        <tr><td><kbd>F</kbd> / <kbd>Esc</kbd></td><td>Enter / leave full screen</td></tr>
+        <tr><td><kbd>H</kbd></td><td>Hide the HUD</td></tr>
+        <tr><td><kbd>M</kbd></td><td>Sound on or off</td></tr>
+        <tr><td><kbd>K</kbd></td><td>Cool mode: 30 fps, lighter rendering</td></tr>
+        <tr><td><kbd>V</kbd> / <kbd>N</kbd></td><td>Start / stop recording a gameplay clip</td></tr>
+      </tbody>
+    </table>
+    <p>On a phone, swipe on the screen to steer and brake.</p>
+  </section>
+
+  <section class="section" aria-labelledby="how-heading">
+    <h2 id="how-heading">How it's built</h2>
+    <p>City Drive is plain JavaScript and WGSL with no engine or library underneath. The world is a road graph that grows around the car; a Web Worker builds the buildings, trees and street furniture for each new block so the main thread only has to draw. Shadows come from a sun shadow map, and a post-processing pass finishes each frame.</p>
+    <p>The <a href="/site/articles/">articles</a> take each of these systems apart in detail.</p>
+  </section>
+</main>
+{{include footer.html}}
+</body>
+</html>

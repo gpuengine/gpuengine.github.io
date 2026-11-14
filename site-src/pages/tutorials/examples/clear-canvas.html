@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lesson" content="/site/tutorials/first-triangle/">
+<title>WebGPU example: Clear the canvas</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0f12; color: #e6e8eb; font-family: system-ui, sans-serif; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .message { padding: 1.5rem; }
+</style>
+</head>
+<body>
+<canvas></canvas>
+<script type="module">
+const adapter = await navigator.gpu?.requestAdapter();
+if (!adapter) {
+  document.body.innerHTML = '<p class="message">This example needs a browser with WebGPU.</p>';
+  throw new Error("WebGPU is not available");
+}
+const device = await adapter.requestDevice();
+const canvas = document.querySelector("canvas");
+canvas.width = canvas.clientWidth * devicePixelRatio;
+canvas.height = canvas.clientHeight * devicePixelRatio;
+const context = canvas.getContext("webgpu");
+const format = navigator.gpu.getPreferredCanvasFormat();
+context.configure({ device, format });
+
+const encoder = device.createCommandEncoder();
+const pass = encoder.beginRenderPass({
+  colorAttachments: [{
+    view: context.getCurrentTexture().createView(),
+    clearValue: { r: 0.1, g: 0.3, b: 0.6, a: 1 },
+    loadOp: "clear",
+    storeOp: "store"
+  }]
+});
+pass.end();
+device.queue.submit([encoder.finish()]);
+</script>
+</body>
+</html>

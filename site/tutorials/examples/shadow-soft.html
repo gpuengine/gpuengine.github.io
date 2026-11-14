@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lesson" content="/site/tutorials/shadow-mapping/">
+<title>WebGPU example: Soft shadows with PCF</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0f12; color: #e6e8eb; font-family: system-ui, sans-serif; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .message { padding: 1.5rem; }
+</style>
+</head>
+<body>
+<canvas></canvas>
+<script type="module">
+const adapter = await navigator.gpu?.requestAdapter();
+if (!adapter) {
+  document.body.innerHTML = '<p class="message">This example needs a browser with WebGPU.</p>';
+  throw new Error("WebGPU is not available");
+}
+const device = await adapter.requestDevice();
+const canvas = document.querySelector("canvas");
+canvas.width = canvas.clientWidth * devicePixelRatio;
+canvas.height = canvas.clientHeight * devicePixelRatio;
+const context = canvas.getContext("webgpu");
+const format = navigator.gpu.getPreferredCanvasFormat();
+context.configure({ device, format });
+
+const SHADOW_MAP_SIZE = 1024;
+const SHADOW_FORMAT = "depth32float";
+const DEPTH_FORMAT = "depth24plus";
+const FLOATS_PER_VERTEX = 6;
+const BYTES_PER_VERTEX = FLOATS_PER_VERTEX * 4;
+const SCENE_UNIFORM_SIZE = 144;
+const OBJECT_UNIFORM_SIZE = 80;
+const LIGHT_HEIGHT = 5;
+const LIGHT_ORBIT_RADIUS = 5;
+const CAMERA_POSITION = [0, 3.5, 6];
+const UP = [0, 1, 0];
+const ORIGIN = [0, 0, 0];
+
+function subtract(a, b) {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+
+function cross(a, b) {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+
+function dot(a, b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function normalize(vector) {
+  const length = Math.hypot(vector[0], vector[1], vector[2]);
+  return [vector[0] / length, vector[1] / length, vector[2] / length];
+}
+
+function multiply(a, b) {
+  const result = new Float32Array(16);
+  for (let column = 0; column < 4; column++) {
+    for (let row = 0; row < 4; row++) {
+      let sum = 0;
+      for (let k = 0; k < 4; k++) {
+        sum += a[k * 4 + row] * b[column * 4 + k];
+      }
+      result[column * 4 + row] = sum;
+    }
+  }
+  return result;
+}
+
+function perspective(fieldOfViewRadians, aspect, near, far) {
+  const focal = 1 / Math.tan(fieldOfViewRadians / 2);
+  const rangeInverse = 1 / (near - far);
+  return new Float32Array([
+    focal / aspect, 0, 0, 0,
+    0, focal, 0, 0,
+    0, 0, far * rangeInverse, -1,
+    0, 0, near * far * rangeInverse, 0
+  ]);
+}
+
+function orthographic(left, right, bottom, top, near, far) {
+  return new Float32Array([
+    2 / (right - left), 0, 0, 0,
+    0, 2 / (top - bottom), 0, 0,
+    0, 0, 1 / (near - far), 0,
+    (left + right) / (left - right), (bottom + top) / (bottom - top), near / (near - far), 1
+  ]);
+}
+
+function lookAt(eye, target, up) {
+  const zAxis = normalize(subtract(eye, target));
+  const xAxis = normalize(cross(up, zAxis));
+  const yAxis = cross(zAxis, xAxis);
+  return new Float32Array([
+    xAxis[0], yAxis[0], zAxis[0], 0,
+    xAxis[1], yAxis[1], zAxis[1], 0,
+    xAxis[2], yAxis[2], zAxis[2], 0,
+    -dot(xAxis, eye), -dot(yAxis, eye), -dot(zAxis, eye), 1
+  ]);
+}
+
+function translation(x, y, z) {
+  return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
+}
+
+function rotationX(angle) {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  return new Float32Array([1, 0, 0, 0, 0, cosine, sine, 0, 0, -sine, cosine, 0, 0, 0, 0, 1]);
+}
+
+function rotationY(angle) {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  return new Float32Array([cosine, 0, -sine, 0, 0, 1, 0, 0, sine, 0, cosine, 0, 0, 0, 0, 1]);
+}
+
+function createCubeVertices(halfSize) {
+  const faces = [
+    { normal: [1, 0, 0], tangent: [0, 0, -1], bitangent: [0, 1, 0] },
+    { normal: [-1, 0, 0], tangent: [0, 0, 1], bitangent: [0, 1, 0] },
+    { normal: [0, 1, 0], tangent: [1, 0, 0], bitangent: [0, 0, -1] },
+    { normal: [0, -1, 0], tangent: [1, 0, 0], bitangent: [0, 0, 1] },
+    { normal: [0, 0, 1], tangent: [1, 0, 0], bitangent: [0, 1, 0] },
+    { normal: [0, 0, -1], tangent: [-1, 0, 0], bitangent: [0, 1, 0] }
+  ];
+  const cornerSigns = [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]];
+  const vertices = [];
+  for (const face of faces) {
+    for (const [tangentSign, bitangentSign] of cornerSigns) {
+      for (let axis = 0; axis < 3; axis++) {
+        vertices.push((face.normal[axis] + face.tangent[axis] * tangentSign + face.bitangent[axis] * bitangentSign) * halfSize);
+      }
+      vertices.push(...face.normal);
+    }
+  }
+  return new Float32Array(vertices);
+}
+
+function createGroundVertices(halfSize) {
+  const corners = [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]];
+  const vertices = [];
+  for (const [x, z] of corners) {
+    vertices.push(x * halfSize, 0, -z * halfSize, 0, 1, 0);
+  }
+  return new Float32Array(vertices);
+}
+
+const shaderModule = device.createShaderModule({
+  code: `
+    struct Scene {
+      lightViewProjection: mat4x4f,
+      cameraViewProjection: mat4x4f,
+      lightDirection: vec3f,
+    }
+
+    struct Object {
+      model: mat4x4f,
+      color: vec4f,
+    }
+
+    struct VertexOutput {
+      @builtin(position) position: vec4f,
+      @location(0) normal: vec3f,
+      @location(1) shadowPosition: vec3f,
+    }
+
+    const SHADOW_BIAS = 0.007;
+    const AMBIENT_LIGHT = 0.25;
+    const SHADOW_MAP_SIZE = ${SHADOW_MAP_SIZE}.0;
+    const FILTER_RADIUS = 2;
+    const FILTER_SPREAD = 2.5;
+
+    @group(0) @binding(0) var<uniform> scene: Scene;
+    @group(0) @binding(1) var shadowMap: texture_depth_2d;
+    @group(0) @binding(2) var shadowSampler: sampler_comparison;
+    @group(1) @binding(0) var<uniform> object: Object;
+
+    @vertex
+    fn shadowVertexMain(@location(0) position: vec3f) -> @builtin(position) vec4f {
+      return scene.lightViewProjection * object.model * vec4f(position, 1.0);
+    }
+
+    @vertex
+    fn vertexMain(@location(0) position: vec3f, @location(1) normal: vec3f) -> VertexOutput {
+      let worldPosition = object.model * vec4f(position, 1.0);
+      let lightSpacePosition = scene.lightViewProjection * worldPosition;
+      var output: VertexOutput;
+      output.position = scene.cameraViewProjection * worldPosition;
+      output.normal = (object.model * vec4f(normal, 0.0)).xyz;
+      output.shadowPosition = vec3f(
+        lightSpacePosition.xy * vec2f(0.5, -0.5) + 0.5,
+        lightSpacePosition.z
+      );
+      return output;
+    }
+
+    fn softShadow(shadowPosition: vec3f) -> f32 {
+      let texelSize = FILTER_SPREAD / SHADOW_MAP_SIZE;
+      let depth = shadowPosition.z - SHADOW_BIAS;
+      var total = 0.0;
+      var sampleCount = 0.0;
+      for (var y = -FILTER_RADIUS; y <= FILTER_RADIUS; y++) {
+        for (var x = -FILTER_RADIUS; x <= FILTER_RADIUS; x++) {
+          let offset = vec2f(f32(x), f32(y)) * texelSize;
+          total += textureSampleCompare(shadowMap, shadowSampler, shadowPosition.xy + offset, depth);
+          sampleCount += 1.0;
+        }
+      }
+      return total / sampleCount;
+    }
+
+    @fragment
+    fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+      let visibility = softShadow(input.shadowPosition);
+      let diffuse = max(dot(normalize(input.normal), scene.lightDirection), 0.0);
+      let lighting = AMBIENT_LIGHT + diffuse * visibility;
+      return vec4f(object.color.rgb * lighting, 1.0);
+    }
+  `
+});
+
+const vertexBufferLayout = {
+  arrayStride: BYTES_PER_VERTEX,
+  attributes: [
+    { shaderLocation: 0, offset: 0, format: "float32x3" },
+    { shaderLocation: 1, offset: 12, format: "float32x3" }
+  ]
+};
+
+const shadowPipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module: shaderModule, entryPoint: "shadowVertexMain", buffers: [vertexBufferLayout] },
+  depthStencil: { format: SHADOW_FORMAT, depthWriteEnabled: true, depthCompare: "less" }
+});
+
+const colorPipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module: shaderModule, entryPoint: "vertexMain", buffers: [vertexBufferLayout] },
+  fragment: { module: shaderModule, entryPoint: "fragmentMain", targets: [{ format }] },
+  depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: "less" }
+});
+
+const shadowTexture = device.createTexture({
+  size: [SHADOW_MAP_SIZE, SHADOW_MAP_SIZE],
+  format: SHADOW_FORMAT,
+  usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+});
+
+const depthTexture = device.createTexture({
+  size: [canvas.width, canvas.height],
+  format: DEPTH_FORMAT,
+  usage: GPUTextureUsage.RENDER_ATTACHMENT
+});
+
+const shadowSampler = device.createSampler({ compare: "less", magFilter: "linear", minFilter: "linear" });
+
+const sceneBuffer = device.createBuffer({
+  size: SCENE_UNIFORM_SIZE,
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+});
+
+const shadowSceneBindGroup = device.createBindGroup({
+  layout: shadowPipeline.getBindGroupLayout(0),
+  entries: [{ binding: 0, resource: { buffer: sceneBuffer } }]
+});
+
+const colorSceneBindGroup = device.createBindGroup({
+  layout: colorPipeline.getBindGroupLayout(0),
+  entries: [
+    { binding: 0, resource: { buffer: sceneBuffer } },
+    { binding: 1, resource: shadowTexture.createView() },
+    { binding: 2, resource: shadowSampler }
+  ]
+});
+
+function createSceneObject(vertices, color) {
+  const vertexBuffer = device.createBuffer({
+    size: vertices.byteLength,
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
+  });
+  device.queue.writeBuffer(vertexBuffer, 0, vertices);
+  const uniformBuffer = device.createBuffer({
+    size: OBJECT_UNIFORM_SIZE,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+  });
+  device.queue.writeBuffer(uniformBuffer, 64, new Float32Array(color));
+  const createBindGroup = (pipeline) => device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(1),
+    entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
+  });
+  return {
+    vertexBuffer,
+    vertexCount: vertices.length / FLOATS_PER_VERTEX,
+    uniformBuffer,
+    shadowBindGroup: createBindGroup(shadowPipeline),
+    colorBindGroup: createBindGroup(colorPipeline)
+  };
+}
+
+const ground = createSceneObject(createGroundVertices(4), [0.85, 0.85, 0.8, 1]);
+const cube = createSceneObject(createCubeVertices(0.7), [0.3, 0.75, 0.95, 1]);
+const sceneObjects = [ground, cube];
+device.queue.writeBuffer(ground.uniformBuffer, 0, translation(0, 0, 0));
+
+const lightProjection = orthographic(-7, 7, -7, 7, 1, 20);
+const cameraView = lookAt(CAMERA_POSITION, [0, 0.8, 0], UP);
+const cameraProjection = perspective(Math.PI / 3, canvas.width / canvas.height, 0.1, 50);
+const cameraViewProjection = multiply(cameraProjection, cameraView);
+device.queue.writeBuffer(sceneBuffer, 64, cameraViewProjection);
+
+function updateLight(seconds) {
+  const angle = seconds * 0.6 + Math.PI;
+  const lightPosition = [Math.cos(angle) * LIGHT_ORBIT_RADIUS, LIGHT_HEIGHT, Math.sin(angle) * LIGHT_ORBIT_RADIUS];
+  const lightViewProjection = multiply(lightProjection, lookAt(lightPosition, ORIGIN, UP));
+  device.queue.writeBuffer(sceneBuffer, 0, lightViewProjection);
+  device.queue.writeBuffer(sceneBuffer, 128, new Float32Array(normalize(lightPosition)));
+}
+
+function drawObjects(pass, bindGroupName) {
+  for (const sceneObject of sceneObjects) {
+    pass.setBindGroup(1, sceneObject[bindGroupName]);
+    pass.setVertexBuffer(0, sceneObject.vertexBuffer);
+    pass.draw(sceneObject.vertexCount);
+  }
+}
+
+function frame(now) {
+  const seconds = now / 1000;
+  updateLight(seconds);
+  const cubeModel = multiply(translation(0, 1.5, 0), multiply(rotationY(seconds), rotationX(seconds * 0.7)));
+  device.queue.writeBuffer(cube.uniformBuffer, 0, cubeModel);
+
+  const encoder = device.createCommandEncoder();
+
+  const shadowPass = encoder.beginRenderPass({
+    colorAttachments: [],
+    depthStencilAttachment: {
+      view: shadowTexture.createView(),
+      depthClearValue: 1,
+      depthLoadOp: "clear",
+      depthStoreOp: "store"
+    }
+  });
+  shadowPass.setPipeline(shadowPipeline);
+  shadowPass.setBindGroup(0, shadowSceneBindGroup);
+  drawObjects(shadowPass, "shadowBindGroup");
+  shadowPass.end();
+
+  const colorPass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: context.getCurrentTexture().createView(),
+      clearValue: { r: 0.05, g: 0.06, b: 0.07, a: 1 },
+      loadOp: "clear",
+      storeOp: "store"
+    }],
+    depthStencilAttachment: {
+      view: depthTexture.createView(),
+      depthClearValue: 1,
+      depthLoadOp: "clear",
+      depthStoreOp: "store"
+    }
+  });
+  colorPass.setPipeline(colorPipeline);
+  colorPass.setBindGroup(0, colorSceneBindGroup);
+  drawObjects(colorPass, "colorBindGroup");
+  colorPass.end();
+
+  device.queue.submit([encoder.finish()]);
+  requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

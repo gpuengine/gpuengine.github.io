@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lesson" content="/site/tutorials/instancing/">
+<title>WebGPU example: A field of cubes from a storage buffer</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0f12; color: #e6e8eb; font-family: system-ui, sans-serif; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .message { padding: 1.5rem; }
+</style>
+</head>
+<body>
+<canvas></canvas>
+<script type="module">
+const adapter = await navigator.gpu?.requestAdapter();
+if (!adapter) {
+  document.body.innerHTML = '<p class="message">This example needs a browser with WebGPU.</p>';
+  throw new Error("WebGPU is not available");
+}
+const device = await adapter.requestDevice();
+const canvas = document.querySelector("canvas");
+canvas.width = canvas.clientWidth * devicePixelRatio;
+canvas.height = canvas.clientHeight * devicePixelRatio;
+const context = canvas.getContext("webgpu");
+const format = navigator.gpu.getPreferredCanvasFormat();
+context.configure({ device, format });
+
+const GRID_SIZE = 20;
+const INSTANCE_COUNT = GRID_SIZE * GRID_SIZE;
+const FLOATS_PER_INSTANCE = 8;
+const FLOATS_PER_VERTEX = 4;
+const CUBE_SPACING = 1.5;
+const UNIFORM_SIZE_BYTES = 80;
+const TIME_FLOAT_INDEX = 16;
+const FIELD_OF_VIEW_RADIANS = Math.PI / 4;
+const NEAR_PLANE = 0.1;
+const FAR_PLANE = 100;
+
+function perspective(fieldOfView, aspect, near, far) {
+  const focalLength = 1 / Math.tan(fieldOfView / 2);
+  const rangeInverse = 1 / (near - far);
+  return new Float32Array([
+    focalLength / aspect, 0, 0, 0,
+    0, focalLength, 0, 0,
+    0, 0, far * rangeInverse, -1,
+    0, 0, near * far * rangeInverse, 0
+  ]);
+}
+
+function subtract(a, b) {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+
+function cross(a, b) {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+
+function dot(a, b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function normalize(vector) {
+  const length = Math.hypot(...vector);
+  return vector.map(component => component / length);
+}
+
+function lookAt(eye, target, up) {
+  const zAxis = normalize(subtract(eye, target));
+  const xAxis = normalize(cross(up, zAxis));
+  const yAxis = cross(zAxis, xAxis);
+  return new Float32Array([
+    xAxis[0], yAxis[0], zAxis[0], 0,
+    xAxis[1], yAxis[1], zAxis[1], 0,
+    xAxis[2], yAxis[2], zAxis[2], 0,
+    -dot(xAxis, eye), -dot(yAxis, eye), -dot(zAxis, eye), 1
+  ]);
+}
+
+function multiply(a, b) {
+  const result = new Float32Array(16);
+  for (let column = 0; column < 4; column++) {
+    for (let row = 0; row < 4; row++) {
+      let sum = 0;
+      for (let k = 0; k < 4; k++) {
+        sum += a[k * 4 + row] * b[column * 4 + k];
+      }
+      result[column * 4 + row] = sum;
+    }
+  }
+  return result;
+}
+
+function createCubeVertices() {
+  const faces = [
+    { corners: [[1, -1, 1], [1, -1, -1], [1, 1, -1], [1, 1, 1]], brightness: 0.8 },
+    { corners: [[-1, -1, -1], [-1, -1, 1], [-1, 1, 1], [-1, 1, -1]], brightness: 0.6 },
+    { corners: [[-1, 1, 1], [1, 1, 1], [1, 1, -1], [-1, 1, -1]], brightness: 1.0 },
+    { corners: [[-1, -1, -1], [1, -1, -1], [1, -1, 1], [-1, -1, 1]], brightness: 0.4 },
+    { corners: [[-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]], brightness: 0.9 },
+    { corners: [[1, -1, -1], [-1, -1, -1], [-1, 1, -1], [1, 1, -1]], brightness: 0.5 }
+  ];
+  const vertices = [];
+  for (const face of faces) {
+    for (const cornerIndex of [0, 1, 2, 0, 2, 3]) {
+      const [x, y, z] = face.corners[cornerIndex];
+      vertices.push(x * 0.5, y * 0.5, z * 0.5, face.brightness);
+    }
+  }
+  return new Float32Array(vertices);
+}
+
+function createInstanceData() {
+  const instanceData = new Float32Array(INSTANCE_COUNT * FLOATS_PER_INSTANCE);
+  const halfGrid = (GRID_SIZE - 1) / 2;
+  for (let index = 0; index < INSTANCE_COUNT; index++) {
+    const column = index % GRID_SIZE;
+    const row = Math.floor(index / GRID_SIZE);
+    const x = (column - halfGrid) * CUBE_SPACING;
+    const z = (row - halfGrid) * CUBE_SPACING;
+    const spinOffset = (column + row) * 0.3;
+    const red = column / (GRID_SIZE - 1);
+    const green = 0.4 + 0.4 * Math.sin(spinOffset);
+    const blue = row / (GRID_SIZE - 1);
+    instanceData.set([x, 0, z, spinOffset, red, green, blue, 0], index * FLOATS_PER_INSTANCE);
+  }
+  return instanceData;
+}
+
+const vertexData = createCubeVertices();
+const vertexBuffer = device.createBuffer({
+  size: vertexData.byteLength,
+  usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
+});
+device.queue.writeBuffer(vertexBuffer, 0, vertexData);
+
+const instanceData = createInstanceData();
+const instanceBuffer = device.createBuffer({
+  size: instanceData.byteLength,
+  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+});
+device.queue.writeBuffer(instanceBuffer, 0, instanceData);
+
+const uniformBuffer = device.createBuffer({
+  size: UNIFORM_SIZE_BYTES,
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+});
+
+const shaderModule = device.createShaderModule({
+  code: `
+    struct CubeInstance {
+      position: vec3f,
+      spinOffset: f32,
+      color: vec3f,
+    }
+
+    struct Uniforms {
+      viewProjection: mat4x4f,
+      time: f32,
+    }
+
+    struct VertexOutput {
+      @builtin(position) position: vec4f,
+      @location(0) color: vec3f,
+    }
+
+    @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+    @group(0) @binding(1) var<storage, read> instances: array<CubeInstance>;
+
+    fn rotateY(point: vec3f, angle: f32) -> vec3f {
+      let cosine = cos(angle);
+      let sine = sin(angle);
+      return vec3f(cosine * point.x + sine * point.z, point.y, -sine * point.x + cosine * point.z);
+    }
+
+    fn rotateX(point: vec3f, angle: f32) -> vec3f {
+      let cosine = cos(angle);
+      let sine = sin(angle);
+      return vec3f(point.x, cosine * point.y - sine * point.z, sine * point.y + cosine * point.z);
+    }
+
+    @vertex
+    fn vertexMain(
+      @builtin(instance_index) instanceIndex: u32,
+      @location(0) position: vec3f,
+      @location(1) brightness: f32
+    ) -> VertexOutput {
+      let instance = instances[instanceIndex];
+      let angle = uniforms.time + instance.spinOffset;
+      let rotated = rotateX(rotateY(position, angle), angle * 0.7);
+      let bob = vec3f(0.0, 0.4 * sin(angle), 0.0);
+      let worldPosition = rotated + instance.position + bob;
+      var output: VertexOutput;
+      output.position = uniforms.viewProjection * vec4f(worldPosition, 1.0);
+      output.color = instance.color * brightness;
+      return output;
+    }
+
+    @fragment
+    fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+      return vec4f(input.color, 1.0);
+    }
+  `
+});
+
+const depthFormat = "depth24plus";
+const depthTexture = device.createTexture({
+  size: [canvas.width, canvas.height],
+  format: depthFormat,
+  usage: GPUTextureUsage.RENDER_ATTACHMENT
+});
+
+const pipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: {
+    module: shaderModule,
+    entryPoint: "vertexMain",
+    buffers: [{
+      arrayStride: FLOATS_PER_VERTEX * Float32Array.BYTES_PER_ELEMENT,
+      attributes: [
+        { shaderLocation: 0, offset: 0, format: "float32x3" },
+        { shaderLocation: 1, offset: 12, format: "float32" }
+      ]
+    }]
+  },
+  fragment: { module: shaderModule, entryPoint: "fragmentMain", targets: [{ format }] },
+  depthStencil: {
+    format: depthFormat,
+    depthWriteEnabled: true,
+    depthCompare: "less"
+  }
+});
+
+const bindGroup = device.createBindGroup({
+  layout: pipeline.getBindGroupLayout(0),
+  entries: [
+    { binding: 0, resource: { buffer: uniformBuffer } },
+    { binding: 1, resource: { buffer: instanceBuffer } }
+  ]
+});
+
+const projection = perspective(FIELD_OF_VIEW_RADIANS, canvas.width / canvas.height, NEAR_PLANE, FAR_PLANE);
+const view = lookAt([0, 15, 28], [0, -2, 0], [0, 1, 0]);
+const viewProjection = multiply(projection, view);
+const uniformData = new Float32Array(UNIFORM_SIZE_BYTES / Float32Array.BYTES_PER_ELEMENT);
+uniformData.set(viewProjection);
+
+function render(timeMilliseconds) {
+  uniformData[TIME_FLOAT_INDEX] = timeMilliseconds / 1000;
+  device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: context.getCurrentTexture().createView(),
+      clearValue: { r: 0.05, g: 0.06, b: 0.07, a: 1 },
+      loadOp: "clear",
+      storeOp: "store"
+    }],
+    depthStencilAttachment: {
+      view: depthTexture.createView(),
+      depthClearValue: 1.0,
+      depthLoadOp: "clear",
+      depthStoreOp: "store"
+    }
+  });
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, bindGroup);
+  pass.setVertexBuffer(0, vertexBuffer);
+  pass.draw(vertexData.length / FLOATS_PER_VERTEX, INSTANCE_COUNT);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

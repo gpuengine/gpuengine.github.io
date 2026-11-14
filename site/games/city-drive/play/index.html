@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<!-- Copyright (C) 2026 Abhishek Sengar -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://gpuengine.github.io/site/games/city-drive/play/">
+<meta property="og:url" content="https://gpuengine.github.io/site/games/city-drive/play/">
+<meta property="og:site_name" content="gpuengine">
+<meta property="og:image" content="https://gpuengine.github.io/site/media/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<script src="/site/site.js" defer></script>
+<script src="/site/code-highlight.js" defer></script>
+
+<title>Play City Drive — WebGPU Driving Game | gpuengine</title>
+<meta name="description" content="Play City Drive in your browser: an endless procedural city rendered with WebGPU. Drive with the keyboard or touch controls, no install needed.">
+<meta property="og:title" content="Play City Drive — WebGPU Driving Game">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/hud.css">
+<script src="/site/game-stage.js" defer></script>
+</head>
+<body class="game-page">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/site/tutorials/" data-nav-section>Tutorials</a>
+    <a href="/site/articles/" data-nav-section>Articles</a>
+    <a href="/site/games/" aria-current="true" data-nav-section>Games</a>
+    <a href="/site/tools/" data-nav-section>Tools</a>
+    <a class="site-nav-cta" href="/site/wgpu3d/" data-nav-section>wgpu3d</a>
+    <a class="site-nav-about" href="/site/about/" data-nav-section><svg class="site-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.42 0-8 2.24-8 5v2h16v-2c0-2.76-3.58-5-8-5Z"/></svg>About</a>
+  </nav>
+</header>
+
+<main id="main" class="game-stage" aria-label="City Drive game">
+
+  <canvas id="gpu-canvas"></canvas>
+
+  <div id="hud-layer"></div>
+
+  <div id="shell-toolbar" class="shell-toolbar">
+    <button id="btn-performance" class="scenery-ctrl" title="Toggle Cool mode: 30 fps and lighter rendering to keep the laptop cool (K)">
+      <span id="performance-label" class="scenery-ctrl-text">Cool:OFF</span>
+      <div class="scenery-ctrl-line"></div>
+    </button>
+    <button id="btn-audio" class="scenery-ctrl active-sky" title="Toggle Sound (M)">
+      <span id="audio-label" class="scenery-ctrl-text">Sound:ON</span>
+      <div class="scenery-ctrl-line"></div>
+    </button>
+    <button id="btn-reload" class="scenery-ctrl" data-hard-reload title="Reload the game, fetching fresh files">
+      <span class="scenery-ctrl-text">Reload</span>
+      <div class="scenery-ctrl-line"></div>
+    </button>
+    <button id="btn-immersive" class="scenery-ctrl active-amber" title="Hide HUD for Fullscreen Immersive View (H)">
+      <span class="scenery-ctrl-text">Immersive [H]</span>
+      <div class="scenery-ctrl-line"></div>
+    </button>
+  </div>
+
+  <div id="immersive-hint">
+    <button id="btn-restore-ui" class="scenery-ctrl active-sky">
+      <span class="scenery-ctrl-text scenery-ctrl-text--regular">IMMERSIVE &bull; PRESS [H] OR CLICK TO SHOW HUD</span>
+      <div class="scenery-ctrl-line"></div>
+    </button>
+  </div>
+
+  <div id="rec-badge">
+    <span class="rec-dot"></span>
+    <span class="mono rec-label">REC</span>
+    <span id="rec-time" class="mono rec-time">00:00</span>
+    <span class="mono rec-stop-hint">[N] STOP</span>
+  </div>
+
+  <div id="rec-dialog">
+    <div class="rec-dialog-card">
+      <span class="save-only mono rec-dialog-title">SAVE GAMEPLAY RECORDING?</span>
+      <span id="rec-info" class="mono rec-dialog-info"></span>
+      <span id="rec-status" class="mono rec-dialog-status"></span>
+      <div class="rec-dialog-actions">
+        <button id="rec-save" class="save-only scenery-ctrl active-amber"><span class="scenery-ctrl-text scenery-ctrl-text--regular">Save to disk…</span><div class="scenery-ctrl-line"></div></button>
+        <button id="rec-discard" class="save-only scenery-ctrl"><span class="scenery-ctrl-text scenery-ctrl-text--regular">Discard</span><div class="scenery-ctrl-line"></div></button>
+        <button id="rec-ok" class="notice-only scenery-ctrl"><span class="scenery-ctrl-text scenery-ctrl-text--regular">OK</span><div class="scenery-ctrl-line"></div></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="startup-failure">
+    <span class="mono startup-failure-title">CAN'T OPEN CITY DRIVE</span>
+    <span id="startup-failure-reason" class="mono startup-failure-reason"></span>
+    <button class="scenery-ctrl active-amber startup-failure-reload" data-hard-reload>
+      <span class="scenery-ctrl-text scenery-ctrl-text--regular">Reload</span>
+      <div class="scenery-ctrl-line"></div>
+    </button>
+  </div>
+
+  <button class="game-fullscreen-button" type="button" aria-label="Enter full screen" title="Full screen (F)">
+    <svg class="icon-enter-fullscreen" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
+    <svg class="icon-exit-fullscreen" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/></svg>
+  </button>
+</main>
+
+  <script src="hard_reload.js"></script>
+  <script src="math.js"></script>
+  <script src="environment.js"></script>
+  <script src="geometry.js"></script>
+  <script src="surface_textures.js"></script>
+  <script src="foliage.js"></script>
+  <script src="world_shaders.js"></script>
+  <script src="sun_shadows.js"></script>
+  <script src="post_processing.js"></script>
+  <script src="renderer.js"></script>
+  <script src="sound.js"></script>
+  <script src="input.js"></script>
+  <script src="recorder.js"></script>
+  <script src="city_blocks.js"></script>
+  <script src="city_districts.js"></script>
+  <script src="road_elevation.js"></script>
+  <script src="world_obstacles.js"></script>
+  <script src="street_trees.js"></script>
+  <script src="architecture_kit.js"></script>
+  <script src="street_furniture.js"></script>
+  <script src="street_buildings.js"></script>
+  <script src="facade_greenery.js"></script>
+  <script src="neighborhood_buildings.js"></script>
+  <script src="suburban_homes.js"></script>
+  <script src="corner_landmarks.js"></script>
+  <script src="brutalist_towers.js"></script>
+  <script src="landmark_buildings.js"></script>
+  <script src="sky_walkways.js"></script>
+  <script src="street_corners.js"></script>
+  <script src="overpass_bridges.js"></script>
+  <script src="waterfront_and_parks.js"></script>
+  <script src="open_fields.js"></script>
+  <script src="far_city.js"></script>
+  <script src="junction_geometry.js"></script>
+  <script src="curb_corners.js"></script>
+  <script src="road_geometry.js"></script>
+  <script src="player_car.js"></script>
+  <script src="dynamic_mesh.js"></script>
+  <script src="game_state.js"></script>
+  <script src="road_graph.js"></script>
+  <script src="road_graph_mirror.js"></script>
+  <script src="road_clearance.js"></script>
+  <script src="world_build_service.js"></script>
+  <script src="world_streaming.js"></script>
+  <script src="shoreline.js"></script>
+  <script src="traffic.js"></script>
+  <script src="particles.js"></script>
+  <script src="car_navigation.js"></script>
+  <script src="drive_camera.js"></script>
+  <script src="drive_physics.js"></script>
+  <script src="drive_hud.js"></script>
+  <script src="drive_minimap.js"></script>
+  <script src="city_drive_game.js"></script>
+  <script src="app_shell.js"></script>
+</body>
+</html>

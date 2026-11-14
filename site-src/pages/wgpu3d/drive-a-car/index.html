@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>Make a Drivable Car in WebGPU with wgpu3d | gpuengine</title>
+<meta name="description" content="Build a drivable car in the browser with wgpu3d: a street of buildings, trees and lamps at sunset, a car with arcade driving physics from City Drive, collisions and a chase camera.">
+<meta property="og:title" content="Make a Drivable Car with wgpu3d">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2026-11-08">
+<script type="importmap">{ "imports": { "wgpu3d": "/{{wgpu3d-file}}" } }</script>
+<link rel="modulepreload" href="/{{wgpu3d-file}}">
+<script type="module" src="/site/wgpu3d/demo-runner.js"></script>
+<script type="application/ld+json">
+[
+  { "@context": "https://schema.org", "@type": "TechArticle", "headline": "Make a drivable car with wgpu3d", "description": "A street scene with a drivable car, collisions and a chase camera using the wgpu3d WebGPU library.", "datePublished": "2026-11-08", "author": { "@type": "Person", "name": "Abhishek Sengar" }, "publisher": { "@type": "Organization", "name": "gpuengine", "url": "{{origin}}/" }, "url": "{{canonical}}" },
+  { "@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [ { "@type": "ListItem", "position": 1, "name": "wgpu3d", "item": "{{origin}}/site/wgpu3d/" }, { "@type": "ListItem", "position": 2, "name": "Make a drivable car", "item": "{{canonical}}" } ] }
+]
+</script>
+</head>
+<body>
+{{include header.html}}
+<main id="main">
+  <article class="article">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/wgpu3d/">wgpu3d</a> / Tutorial 2</nav>
+    <h1>Make a drivable car</h1>
+    <p class="article-meta"><time datetime="2026-11-08">8 November 2026</time><span>7 min read</span><span>wgpu3d · Vehicles</span></p>
+    <p class="article-lead">Two crossing streets at sunset, lined with buildings, lamps and trees, and a car you can drive into all of them. The car and its handling come straight from City Drive; wgpu3d packages them as a prefab and a controller, so the whole game fits on one screen of code.</p>
+
+    <figure class="wgpu3d-demo" data-wgpu3d-demo="drive-demo-code">
+      <div class="wgpu3d-demo-stage">
+        <canvas id="drive-demo" aria-label="A blue car on a street at sunset, drivable with the keyboard"></canvas>
+        <button class="wgpu3d-demo-start" type="button">▶ Run the demo</button>
+        <p class="wgpu3d-demo-message" hidden></p>
+      </div>
+      <figcaption>Click the scene, then drive with WASD or the arrow keys. Space is the handbrake. On a phone, drag up to drive and sideways to steer.</figcaption>
+    </figure>
+
+    <h2 id="code">The whole program</h2>
+<pre><code id="drive-demo-code" data-language="js">import { createApp, createCar, createGround, createRoad, createBuilding, createTree, createLampPost, VehicleController, createRandom } from "wgpu3d";
+
+const app = await createApp({ canvas: document.querySelector("#drive-demo"), environment: "sunset" });
+const random = createRandom(7);
+
+app.add(createGround({ size: 260, tiles: 52 }));
+app.add(createRoad({ length: 240, width: 9 }));
+app.add(createRoad({ length: 240, width: 9, yaw: Math.PI / 2, height: 0.04 }));
+
+for (let block = -5; block &lt;= 5; block++) {
+  if (block === 0) continue;
+  for (const side of [-1, 1]) {
+    const along = block * 20;
+    const height = random.range(8, 26);
+    app.add(createBuilding({ seed: random.integer(1, 9999), width: 12, depth: 12, height, position: [side * 14, 0, along], litShare: 0.25 }));
+    app.add(createBuilding({ seed: random.integer(1, 9999), width: 12, depth: 12, height: random.range(8, 26), position: [along, 0, side * 14], litShare: 0.25 }));
+    app.add(createLampPost({ position: [side * 6, 0, along + 10] }));
+  }
+}
+
+for (let index = 0; index &lt; 60; index++) {
+  const x = random.range(-120, 120), z = random.range(-120, 120);
+  if (Math.abs(x) &lt; 24 || Math.abs(z) &lt; 24) continue;
+  app.add(createTree({ seed: index, height: random.range(4, 8), kind: random() &lt; 0.4 ? "pine" : "round", position: [x, 0, z] }));
+}
+
+const car = createCar({ paint: "#1d6fd8" });
+car.addBehavior(new VehicleController({ bounds: { minX: -125, maxX: 125, minZ: -125, maxZ: 125 } }));
+app.add(car);
+app.follow(car, { speedFieldOfView: 12 });
+app.start();</code></pre>
+
+    <h2 id="world">Laying out the world</h2>
+    <p>The world is built from prefabs, functions that return a ready-made <code>SceneObject</code>. <code>createRoad</code> gives an asphalt strip with lane markings; the second road is rotated a quarter turn with <code>yaw</code> and raised with <code>height</code> so it sits cleanly on top of the first where they cross. Buildings get a random height and a <code>litShare</code>, the fraction of windows that glow, which is what makes the street look lived-in once the sun is low.</p>
+    <p>All the randomness comes from <code>createRandom(7)</code>, a seeded generator. The same seed always lays out the same street, so a bug you find can be reproduced, and changing one number gives you a new town. The trees loop skips spots within 24 metres of either road so nothing grows in the traffic lanes.</p>
+
+    <h2 id="car">The car</h2>
+    <p><code>createCar</code> builds the City Drive car: a body lofted from twelve cross-sections, a glass cabin, trim, headlights and four wheels. The wheels and body are separate child objects listed in <code>car.parts</code>, so a controller can spin and steer the wheels and tilt the body without rebuilding any geometry. All four wheels share one mesh.</p>
+    <p><code>VehicleController</code> is a behavior that turns key presses into motion, using the same model as City Drive's <a href="/site/articles/car-physics/">car physics</a>:</p>
+    <ul>
+      <li>The throttle pushes harder at low speed and fades towards <code>maxSpeed</code>. Letting go coasts, with a little drag.</li>
+      <li>Steering eases towards the key you hold, and the turn rate shrinks as speed rises, so the car is nimble at walking pace and stable on a straight.</li>
+      <li>The handbrake scrubs speed and adds steering, enough to swing the tail round a corner.</li>
+      <li>A head-on hit bounces the car back at a fifth of its speed; glancing hits just scrape it along the wall.</li>
+      <li>For feel, the body squats under acceleration, dives under braking and leans out of turns, and the brake lights glow when you slow down.</li>
+    </ul>
+    <p>Every one of those numbers is an option. A heavier truck is <code>new VehicleController({ maxSpeed: 20, acceleration: 9, steering: 1.2 })</code>.</p>
+
+    <h2 id="collisions">Collisions</h2>
+    <p>Buildings, lamp posts and trees come with box colliders, rotated with the object. Each frame the controller treats the car as a circle, finds any colliders it overlaps and pushes it out along the shortest way. That is cheaper and steadier than a physics engine, and it is exactly what a driving game needs. <code>bounds</code> keeps the car on the map.</p>
+
+    <h2 id="camera">The chase camera</h2>
+    <p><code>app.follow(car)</code> puts a chase camera behind the car. It aims at a point ahead of the car rather than the car itself, so you see where you are going, and it follows with springy smoothing so turns feel weighty. <code>speedFieldOfView: 12</code> widens the view by up to 12 degrees as you speed up, an old racing-game trick for a sense of speed.</p>
+
+    <h2 id="try">Things to try</h2>
+    <ul>
+      <li>Change <code>environment</code> to <code>"night"</code>: the lit windows and lamps carry the scene.</li>
+      <li>Add a second car with no controller and park it in the street. It is solid, so you can bump into it.</li>
+      <li>Read <code>car.speed</code> in <code>app.onUpdate</code> and write it into a speedometer element over the canvas.</li>
+    </ul>
+
+    <nav class="article-pager" aria-label="More tutorials">
+      <a href="/site/wgpu3d/getting-started/" rel="prev"><small>Tutorial 1</small>Your first wgpu3d scene</a>
+      <a href="/site/wgpu3d/collect-the-coins/" rel="next"><small>Tutorial 3</small>A tiny platform game</a>
+    </nav>
+  </article>
+</main>
+{{include footer.html}}
+</body>
+</html>

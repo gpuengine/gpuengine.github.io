@@ -1,0 +1,3 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 Abhishek Sengar
+const LAWN_GREEN=Object.freeze([.24,.5,.24]);function pushLawn(e,t,{lateral:o,along:n,across:s,length:c}){return pushLotBox(e,t,{lateral:o,along:n,bottom:-.1,height:.36,across:s,length:c,color:LAWN_GREEN,material:MATERIAL.TERRAIN,variant:.25,occlusion:.97})}function plantLotTree(e,{lateral:t,along:o,speciesNames:n,heightScale:s=1,maxCrownRadiusMeters:c,salt:r}){const i=lotPoint(e,t,o,LOT_GROUND),d=seededRandom(e.segIndex*17.3+e.side*3.1+r*7.7),h=chooseTreeFromSpecies(n,{pickSeed:d,heightSeed:seededRandom(e.segIndex*5.9+r*2.3)});plantStreetTree({x:i[0],y:i[1],z:i[2],...h,heightMeters:h.heightMeters*s,maxCrownRadiusMeters:c,seed:d})}

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://gpuengine.github.io/site/css-editor/">
+<meta property="og:url" content="https://gpuengine.github.io/site/css-editor/">
+<meta property="og:site_name" content="gpuengine">
+<meta property="og:image" content="https://gpuengine.github.io/site/media/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<script src="/site/site.js" defer></script>
+<script src="/site/code-highlight.js" defer></script>
+
+<title>Visual CSS Editor — Box Shadow, Gradient, Clip-path, Color &amp; Easing Generator | gpuengine</title>
+<meta name="description" content="Free visual CSS editor. Drag handles and sliders to build box-shadow, text-shadow, linear, radial and conic gradients, clip-path shapes, border-radius, filters, transforms, cubic-bezier easing and colors in HEX, RGB, HSL, HWB or OKLCH. Paste existing CSS to edit it.">
+<meta property="og:title" content="Visual CSS Editor — Shadows, Gradients, Clip-paths and More">
+<meta property="og:description" content="Edit number-heavy CSS values visually: drag, preview and copy. Paste existing CSS to tweak it. Runs entirely in your browser.">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="/site/tool-page.css">
+<script type="importmap">{ "imports": { "lit": "/site/vendor/lit-core-3.2.1.min.js" } }</script>
+<link rel="modulepreload" href="/site/vendor/lit-core-3.2.1.min.js">
+<script type="module" src="/site/css-editor/app/css_workbench.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Visual CSS Editor",
+  "url": "https://gpuengine.github.io/site/css-editor/",
+  "description": "A free in-browser visual editor and generator for complex CSS values: box-shadow, text-shadow, gradients, clip-path, border-radius, filter, transform, cubic-bezier easing and colors.",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Any",
+  "browserRequirements": "Requires JavaScript.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Tools", "item": "https://gpuengine.github.io/site/tools/" },
+    { "@type": "ListItem", "position": 2, "name": "Visual CSS Editor", "item": "https://gpuengine.github.io/site/css-editor/" }
+  ]
+}
+</script>
+</head>
+<body class="tool-page">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/site/tutorials/" data-nav-section>Tutorials</a>
+    <a href="/site/articles/" data-nav-section>Articles</a>
+    <a href="/site/games/" data-nav-section>Games</a>
+    <a href="/site/tools/" data-nav-section>Tools</a>
+    <a class="site-nav-cta" href="/site/wgpu3d/" data-nav-section>wgpu3d</a>
+    <a class="site-nav-about" href="/site/about/" data-nav-section><svg class="site-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.42 0-8 2.24-8 5v2h16v-2c0-2.76-3.58-5-8-5Z"/></svg>About</a>
+  </nav>
+</header>
+
+<main id="main" class="tool-main">
+  <div class="tool-intro">
+    <nav class="tool-breadcrumbs" aria-label="Breadcrumb"><a href="/site/tools/">Tools</a><span class="tool-breadcrumb-separator" aria-hidden="true">›</span></nav>
+    <h1 class="tool-title"><span class="tool-icon" aria-hidden="true">#</span>Visual CSS Editor</h1>
+    <p class="tool-tagline">Drag, scrub and pick instead of typing numbers. Paste existing CSS into the box at the bottom to edit it.</p>
+    <button class="tool-about-button" type="button" popovertarget="tool-about">About this tool</button>
+  </div>
+
+  <css-workbench class="tool-app"></css-workbench>
+  <noscript><p class="tool-noscript">The CSS editor needs JavaScript. Enable it to edit values visually.</p></noscript>
+
+  <section id="tool-about" class="tool-about" popover aria-labelledby="tool-about-heading">
+    <button class="tool-about-close" type="button" popovertarget="tool-about" popovertargetaction="hide" aria-label="Close">×</button>
+    <h2 id="tool-about-heading">Edit number-heavy CSS by looking at it</h2>
+    <p>Some CSS properties are a long row of numbers that only make sense once you see them rendered. This editor puts each one next to a live preview with handles, sliders and pickers, and writes clean CSS as you go. Everything runs in your browser.</p>
+
+    <h3>What you can edit</h3>
+    <ul>
+      <li><strong>Colors</strong>: pick visually, then copy as HEX, RGB, legacy RGBA, HSL, HSLA, HWB or OKLCH, with WCAG contrast against white and black text.</li>
+      <li><strong>Gradients</strong>: linear, radial and conic, plain or repeating. Drag colour stops on a bar, set the angle on a dial, drag the centre on the preview, and blend in OKLCH or other colour spaces.</li>
+      <li><strong>Box shadow and text shadow</strong>: stack as many layers as you like, with an offset pad, blur, spread, inset and per-layer colour.</li>
+      <li><strong>Filter</strong>: blur, brightness, contrast, saturate, grayscale, sepia, invert, opacity, hue-rotate and drop-shadow, in any order, with a before/after slider.</li>
+      <li><strong>Clip path</strong>: polygons with draggable points, plus circle, ellipse and inset shapes, and a library of ready-made shapes.</li>
+      <li><strong>Border radius</strong>: one value, per corner, or the full eight-value elliptical syntax, with handles on every edge.</li>
+      <li><strong>Transform</strong>: translate, rotate, scale, skew and 3D rotation with perspective, applied in the order you choose.</li>
+      <li><strong>Easing curves</strong>: drag the two control points of a <code>cubic-bezier()</code> and watch it animate next to a linear reference.</li>
+    </ul>
+
+    <h3>Paste CSS to edit it</h3>
+    <p>The box at the bottom is both output and input. Paste a value like <code>0 4px 12px rgb(0 0 0 / 0.2)</code> or a whole declaration like <code>clip-path: polygon(…)</code>. The editor works out which property it is, switches to the right tool and loads it. If something can't be read, the box says so and nothing is lost.</p>
+
+    <h3>Handy controls</h3>
+    <ul>
+      <li>Drag any slider label sideways to scrub its value; hold <kbd>Shift</kbd> to move ten times faster.</li>
+      <li>Handles on the previews can be moved with the arrow keys once focused; <kbd>Shift</kbd> moves further.</li>
+      <li>In the gradient and clip-path editors, <kbd>Delete</kbd> removes the selected stop or point.</li>
+      <li>The address bar always holds the current value, so you can bookmark or share a link to it.</li>
+    </ul>
+
+    <h3>Questions</h3>
+    <dl class="tool-faq">
+      <dt>Is anything uploaded?</dt>
+      <dd>No. The editor runs locally in your browser and never sends what you paste anywhere.</dd>
+      <dt>Why won't it read my value?</dt>
+      <dd>The editor reads lengths in <code>px</code> and <code>%</code>. Values using <code>em</code>, <code>rem</code>, <code>calc()</code> or CSS variables can't be shown with handles, so it reports them instead of guessing.</dd>
+      <dt>Which colour format should I use?</dt>
+      <dd>HEX and RGB work everywhere. OKLCH is supported by all current browsers and makes it easy to change lightness without shifting the hue. Gradients blended <em>in oklch</em> avoid the grey middle you get between complementary colours.</dd>
+    </dl>
+  </section>
+</main>
+</body>
+</html>

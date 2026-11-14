@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>WebGPU Introduction — What is WebGPU? | WebGPU Tutorial</title>
+<meta name="description" content="What is WebGPU? Learn what the WebGPU API is, how it compares to WebGL, which browsers support it, and how to check for support with JavaScript. Includes a runnable example.">
+<meta property="og:title" content="WebGPU Introduction — What is WebGPU?">
+<meta property="og:type" content="article">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "WebGPU Introduction — What is WebGPU?",
+    "description": "What WebGPU is, how it compares to WebGL, browser support, and how to detect it.",
+    "proficiencyLevel": "Beginner",
+    "url": "{{canonical}}"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Tutorials", "item": "{{origin}}/site/tutorials/" },
+      { "@type": "ListItem", "position": 2, "name": "What is WebGPU?", "item": "{{canonical}}" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+{{include header.html}}
+<div class="doc">
+  {{include tutorial-sidebar.html}}
+  <main id="main">
+    <article>
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/tutorials/">Tutorials</a> / Getting started</nav>
+      <h1>WebGPU <span class="lesson-title-accent">Introduction</span></h1>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/" rel="prev">❮ Home</a>
+        <a class="lesson-button" href="/site/tutorials/first-triangle/" rel="next">Next ❯</a>
+      </nav>
+
+      <p class="lesson-intro"><strong>WebGPU</strong> is a JavaScript API that lets a web page use the graphics card (GPU) directly.</p>
+      <p>With WebGPU you can draw 2D and 3D graphics, and you can also run general-purpose calculations on the GPU. It is the modern replacement for WebGL.</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Check if your browser supports WebGPU:</p>
+<pre><code data-language="js">if (!navigator.gpu) {
+  console.log("WebGPU is not supported.");
+} else {
+  const adapter = await navigator.gpu.requestAdapter();
+  console.log(adapter ? "WebGPU is supported!" : "No GPU adapter found.");
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=check-support" target="_blank">Edit &amp; Run »</a>
+      </div>
+
+      <h2>What is WebGPU?</h2>
+      <ul>
+        <li>WebGPU is a <strong>web standard</strong> from the W3C</li>
+        <li>WebGPU runs in the <strong>browser</strong>: no plugin, no install</li>
+        <li>WebGPU can <strong>render graphics</strong> and <strong>run compute work</strong></li>
+        <li>WebGPU programs are written in <strong>JavaScript</strong> (the CPU side) and <strong>WGSL</strong> (the GPU side)</li>
+      </ul>
+
+      <h2>Why Learn WebGPU?</h2>
+      <p>WebGPU is used to build:</p>
+      <ul>
+        <li>3D games and interactive scenes, like <a href="/site/games/city-drive/">City Drive</a></li>
+        <li>Data visualization with millions of points</li>
+        <li>Image and video filters</li>
+        <li>Physics and particle simulations</li>
+        <li>Fast tools, like the GPU search in our <a href="/site/json-viewer/">JSON viewer</a></li>
+        <li>Machine learning in the browser</li>
+      </ul>
+
+      <h2>WebGPU vs WebGL</h2>
+      <p>WebGL is based on OpenGL, a design from the 1990s. WebGPU is based on the modern native APIs: <strong>Vulkan</strong>, <strong>Metal</strong> and <strong>Direct3D 12</strong>.</p>
+      <table class="reference-table">
+        <thead><tr><th>Feature</th><th>WebGL 2</th><th>WebGPU</th></tr></thead>
+        <tbody>
+          <tr><td>Shading language</td><td>GLSL</td><td>WGSL</td></tr>
+          <tr><td>Compute shaders</td><td>No</td><td>Yes</td></tr>
+          <tr><td>State model</td><td>Global state machine</td><td>Pipeline objects created up front</td></tr>
+          <tr><td>CPU cost per draw call</td><td>Higher</td><td>Lower</td></tr>
+          <tr><td>Error reporting</td><td><code>gl.getError()</code></td><td>Detailed validation messages</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Browser Support</h2>
+      <p>The numbers in the table are the first browser version with WebGPU turned on by default:</p>
+      <table class="reference-table">
+        <thead><tr><th>Browser</th><th>Desktop</th><th>Mobile</th></tr></thead>
+        <tbody>
+          <tr><td>Chrome</td><td>113</td><td>121 (Android)</td></tr>
+          <tr><td>Edge</td><td>113</td><td>—</td></tr>
+          <tr><td>Safari</td><td>26 (macOS)</td><td>26 (iOS, iPadOS)</td></tr>
+          <tr><td>Firefox</td><td>141 (Windows)</td><td>Rolling out</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-warning">
+        <strong>Warning</strong>
+        WebGPU only works on a <strong>secure</strong> page: one served over <code>https://</code>, or from <code>http://localhost</code> while you develop. Opening an HTML file directly from your disk may not work.
+      </div>
+
+      <h2>Checking for WebGPU</h2>
+      <p>All of WebGPU starts at <code>navigator.gpu</code>. If it does not exist, the browser does not support WebGPU.</p>
+      <p>Next, ask for an <dfn>adapter</dfn>. An adapter represents one physical GPU in the computer. It can be <code>null</code> even when <code>navigator.gpu</code> exists, for example if the GPU is blocked by the browser.</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Show the GPU vendor:</p>
+<pre><code data-language="js">const adapter = await navigator.gpu.requestAdapter();
+if (adapter) {
+  document.getElementById("result").textContent = adapter.info.vendor;
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=check-support" target="_blank">Edit &amp; Run »</a>
+      </div>
+
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        <code>await</code> works at the top level of a <code>&lt;script type="module"&gt;</code>. All examples in this tutorial use module scripts for that reason.
+      </div>
+
+      <h2>WebGPU Terms</h2>
+      <p>These words appear in every lesson. You do not need to remember them now:</p>
+      <table class="reference-table">
+        <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>Adapter</td><td>A physical GPU</td></tr>
+          <tr><td>Device</td><td>Your connection to the adapter. Every buffer, texture and pipeline belongs to a device.</td></tr>
+          <tr><td>Shader</td><td>A small program that runs on the GPU, written in WGSL</td></tr>
+          <tr><td>Pipeline</td><td>Shaders plus the settings needed to run them</td></tr>
+          <tr><td>Buffer</td><td>A block of GPU memory</td></tr>
+          <tr><td>Texture</td><td>An image stored on the GPU</td></tr>
+          <tr><td>Command encoder</td><td>Records GPU commands so they can be sent in one batch</td></tr>
+          <tr><td>Queue</td><td>Where recorded commands are submitted to the GPU</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Exercises</h2>
+      <div class="exercise">
+        <p>1. Which property tells you if a browser has WebGPU?</p>
+        <details><summary>Show answer</summary><p><code>navigator.gpu</code></p></details>
+      </div>
+      <div class="exercise">
+        <p>2. What is the name of the shading language used by WebGPU?</p>
+        <details><summary>Show answer</summary><p>WGSL, the WebGPU Shading Language.</p></details>
+      </div>
+      <div class="exercise">
+        <p>3. Can <code>requestAdapter()</code> return <code>null</code> even when <code>navigator.gpu</code> exists?</p>
+        <details><summary>Show answer</summary><p>Yes. For example, when the GPU or its driver is blocked by the browser. Always check the adapter too.</p></details>
+      </div>
+
+      <h2>Summary</h2>
+      <ul>
+        <li>WebGPU gives web pages access to the GPU for graphics and compute.</li>
+        <li>It replaces WebGL and is modelled on Vulkan, Metal and Direct3D 12.</li>
+        <li>Check <code>navigator.gpu</code>, then <code>requestAdapter()</code>, before anything else.</li>
+      </ul>
+
+      {{official-links}}
+
+      <nav class="lesson-nav lesson-nav-bottom" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/" rel="prev">❮ Home</a>
+        <a class="lesson-button" href="/site/tutorials/first-triangle/" rel="next">Next ❯</a>
+      </nav>
+    </article>
+  </main>
+</div>
+{{include footer.html}}
+</body>
+</html>

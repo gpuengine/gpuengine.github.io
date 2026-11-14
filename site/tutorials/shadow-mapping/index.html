@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://gpuengine.github.io/site/tutorials/shadow-mapping/">
+<meta property="og:url" content="https://gpuengine.github.io/site/tutorials/shadow-mapping/">
+<meta property="og:site_name" content="gpuengine">
+<meta property="og:image" content="https://gpuengine.github.io/site/media/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<script src="/site/site.js" defer></script>
+<script src="/site/code-highlight.js" defer></script>
+
+<title>WebGPU Shadow Mapping — Depth Textures and Soft Shadows | WebGPU Tutorial</title>
+<meta name="description" content="Learn WebGPU shadow mapping: render depth from the light, use a comparison sampler and textureSampleCompare, fix shadow acne with bias and add PCF soft shadows.">
+<meta property="og:title" content="WebGPU Shadow Mapping — Depth Textures and Soft Shadows">
+<meta property="og:type" content="article">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "WebGPU Shadow Mapping — Depth Textures and Soft Shadows",
+    "description": "Real-time shadows in WebGPU with a shadow map, a comparison sampler and PCF, explained with runnable examples.",
+    "proficiencyLevel": "Intermediate",
+    "url": "https://gpuengine.github.io/site/tutorials/shadow-mapping/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Tutorials", "item": "https://gpuengine.github.io/site/tutorials/" },
+      { "@type": "ListItem", "position": 2, "name": "Shadow mapping", "item": "https://gpuengine.github.io/site/tutorials/shadow-mapping/" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/site/tutorials/" aria-current="true" data-nav-section>Tutorials</a>
+    <a href="/site/articles/" data-nav-section>Articles</a>
+    <a href="/site/games/" data-nav-section>Games</a>
+    <a href="/site/tools/" data-nav-section>Tools</a>
+    <a class="site-nav-cta" href="/site/wgpu3d/" data-nav-section>wgpu3d</a>
+    <a class="site-nav-about" href="/site/about/" data-nav-section><svg class="site-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.42 0-8 2.24-8 5v2h16v-2c0-2.76-3.58-5-8-5Z"/></svg>About</a>
+  </nav>
+</header>
+
+<div class="doc">
+  <nav class="doc-sidebar" aria-label="Tutorials">
+  <a class="doc-sidebar-home" href="/site/tutorials/">WebGPU Tutorial Home</a>
+  <p class="doc-sidebar-heading">Getting started</p>
+  <a href="/site/tutorials/webgpu-intro/">1. What is WebGPU?</a>
+  <a href="/site/tutorials/first-triangle/">2. Your first triangle</a>
+  <a href="/site/tutorials/wgsl-basics/">3. WGSL basics</a>
+  <a href="/site/tutorials/vertex-buffers/">4. Vertex buffers</a>
+  <a href="/site/tutorials/uniforms-bind-groups/">5. Uniforms &amp; bind groups</a>
+  <p class="doc-sidebar-heading">Going 3D</p>
+  <a href="/site/tutorials/camera-matrices/">6. Camera &amp; matrices</a>
+  <a href="/site/tutorials/depth-buffer/">7. Depth buffer</a>
+  <a href="/site/tutorials/textures-samplers/">8. Textures &amp; samplers</a>
+  <a href="/site/tutorials/instancing/">9. Instancing</a>
+  <p class="doc-sidebar-heading">Advanced</p>
+  <a href="/site/tutorials/compute-shaders/">10. Compute shaders</a>
+  <a href="/site/tutorials/shadow-mapping/" aria-current="page">11. Shadow mapping</a>
+  <a href="/site/tutorials/post-processing/">12. Post-processing</a>
+  <p class="doc-sidebar-heading">Practice</p>
+  <a href="/site/tutorials/playground/?example=first-triangle" target="_blank">Playground</a>
+  <a href="/site/resources/">Official docs &amp; resources</a>
+</nav>
+
+  <main id="main">
+    <article>
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/tutorials/">Tutorials</a> / Advanced</nav>
+      <h1>WebGPU <span class="lesson-title-accent">Shadow Mapping</span></h1>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/compute-shaders/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/post-processing/" rel="next">Next ❯</a>
+      </nav>
+
+      <p class="lesson-intro"><strong>Shadow mapping</strong> is the most common way to draw real-time shadows.</p>
+      <p>The GPU has no idea what a shadow is. You teach it with one simple trick: look at the scene from the light first.</p>
+
+      <figure class="example-demo">
+        <iframe src="/site/tutorials/examples/shadow-soft.html" title="A rotating blue cube casting a soft shadow on a ground plane while the light circles around it" loading="lazy"></iframe>
+        <figcaption>A rotating cube with soft shadows from a moving light.</figcaption>
+      </figure>
+
+      <h2>The Idea</h2>
+      <p>A point is in shadow if something is between it and the light. To find out, draw the scene twice:</p>
+      <ol>
+        <li><strong>Shadow pass:</strong> render the scene <strong>from the light</strong>. Keep only the depth. This depth texture is the <dfn>shadow map</dfn>. It stores how far the light can "see" in every direction.</li>
+        <li><strong>Main pass:</strong> render the scene from the camera as usual. For each pixel, work out where it lands in the shadow map. If the pixel is further from the light than the stored depth, something blocks the light. The pixel is in shadow.</li>
+      </ol>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        This lesson builds on the <a href="/site/tutorials/depth-buffer/">depth buffer</a> and <a href="/site/tutorials/camera-matrices/">camera matrices</a>. The shadow map is just a depth buffer rendered from a different point of view.
+      </div>
+
+      <h2>Matrix Helpers</h2>
+      <p>We need a few matrix functions. They use plain JavaScript and no library. Matrices are 16 numbers in <strong>column-major</strong> order, and depth goes from 0 to 1, as WebGPU expects.</p>
+<pre><code data-language="js">function multiply(a, b) {
+  const result = new Float32Array(16);
+  for (let column = 0; column &lt; 4; column++) {
+    for (let row = 0; row &lt; 4; row++) {
+      let sum = 0;
+      for (let k = 0; k &lt; 4; k++) {
+        sum += a[k * 4 + row] * b[column * 4 + k];
+      }
+      result[column * 4 + row] = sum;
+    }
+  }
+  return result;
+}
+
+function perspective(fieldOfViewRadians, aspect, near, far) {
+  const focal = 1 / Math.tan(fieldOfViewRadians / 2);
+  const rangeInverse = 1 / (near - far);
+  return new Float32Array([
+    focal / aspect, 0, 0, 0,
+    0, focal, 0, 0,
+    0, 0, far * rangeInverse, -1,
+    0, 0, near * far * rangeInverse, 0
+  ]);
+}
+
+function orthographic(left, right, bottom, top, near, far) {
+  return new Float32Array([
+    2 / (right - left), 0, 0, 0,
+    0, 2 / (top - bottom), 0, 0,
+    0, 0, 1 / (near - far), 0,
+    (left + right) / (left - right), (bottom + top) / (bottom - top), near / (near - far), 1
+  ]);
+}
+
+function lookAt(eye, target, up) {
+  const zAxis = normalize(subtract(eye, target));
+  const xAxis = normalize(cross(up, zAxis));
+  const yAxis = cross(zAxis, xAxis);
+  return new Float32Array([
+    xAxis[0], yAxis[0], zAxis[0], 0,
+    xAxis[1], yAxis[1], zAxis[1], 0,
+    xAxis[2], yAxis[2], zAxis[2], 0,
+    -dot(xAxis, eye), -dot(yAxis, eye), -dot(zAxis, eye), 1
+  ]);
+}</code></pre>
+      <p><code>subtract</code>, <code>cross</code>, <code>dot</code> and <code>normalize</code> are the usual small vector functions. You will find them in the full examples.</p>
+
+      <h2>The Light's View-Projection Matrix</h2>
+      <p>The light needs its own "camera". Sunlight is so far away that its rays are parallel, so we use an <dfn>orthographic</dfn> projection. It has no perspective: far things do not get smaller.</p>
+<pre><code data-language="js">const LIGHT_POSITION = [5, 6, 2];
+const lightView = lookAt(LIGHT_POSITION, [0, 0, 0], [0, 1, 0]);
+const lightProjection = orthographic(-7, 7, -7, 7, 1, 20);
+const lightViewProjection = multiply(lightProjection, lightView);</code></pre>
+      <p>The box from −7 to 7 must cover everything that can cast or receive a shadow. A smaller box gives sharper shadows, because the shadow map pixels are spread over less ground.</p>
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        For a spotlight or a lamp, use <code>perspective()</code> for the light instead. Its rays spread out from one point, like a camera.
+      </div>
+
+      <h2>The Shadow Map Texture</h2>
+      <p>The shadow map is a depth texture. It needs two usages: <code>RENDER_ATTACHMENT</code> so the shadow pass can draw into it, and <code>TEXTURE_BINDING</code> so the main pass can read it.</p>
+<pre><code data-language="js">const SHADOW_MAP_SIZE = 2048;
+
+const shadowTexture = device.createTexture({
+  size: [SHADOW_MAP_SIZE, SHADOW_MAP_SIZE],
+  format: "depth32float",
+  usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+});</code></pre>
+
+      <h2>The Shadow Pass</h2>
+      <p>The shadow pass only needs depth, so its pipeline has <strong>no fragment stage</strong> and no colour targets. That makes it very fast.</p>
+<pre><code data-language="wgsl">@vertex
+fn shadowVertexMain(@location(0) position: vec3f) -> @builtin(position) vec4f {
+  return scene.lightViewProjection * object.model * vec4f(position, 1.0);
+}</code></pre>
+<pre><code data-language="js">const shadowPipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module: shaderModule, entryPoint: "shadowVertexMain", buffers: [vertexBufferLayout] },
+  depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less" }
+});
+
+const shadowPass = encoder.beginRenderPass({
+  colorAttachments: [],
+  depthStencilAttachment: {
+    view: shadowTexture.createView(),
+    depthClearValue: 1,
+    depthLoadOp: "clear",
+    depthStoreOp: "store"
+  }
+});</code></pre>
+      <p>Draw every object in the shadow pass, then end it and start the normal camera pass.</p>
+
+      <h2>The Comparison Sampler</h2>
+      <p>To read the shadow map, use a special <dfn>comparison sampler</dfn>. Instead of returning the stored depth, it compares it with a depth you give it and returns <strong>1.0 (lit)</strong> or <strong>0.0 (in shadow)</strong>.</p>
+<pre><code data-language="js">const shadowSampler = device.createSampler({ compare: "less" });</code></pre>
+      <p><code>compare: "less"</code> means: return 1 if <em>your</em> depth is less than the stored depth. In other words, nothing is closer to the light than this pixel.</p>
+
+      <h2>Comparing in WGSL</h2>
+      <p>In WGSL, the shadow map is a <code>texture_depth_2d</code>, and the sampler is a <code>sampler_comparison</code>. Read them with <code>textureSampleCompare</code>.</p>
+      <p>The vertex shader also moves each point into the light's space. Clip space goes from −1 to 1, but texture coordinates go from 0 to 1 with y pointing down, so we scale by <code>(0.5, -0.5)</code> and add <code>0.5</code>.</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>A rotating cube casting a sharp shadow:</p>
+<pre><code data-language="wgsl">@group(0) @binding(0) var&lt;uniform&gt; scene: Scene;
+@group(0) @binding(1) var shadowMap: texture_depth_2d;
+@group(0) @binding(2) var shadowSampler: sampler_comparison;
+@group(1) @binding(0) var&lt;uniform&gt; object: Object;
+
+const SHADOW_BIAS = 0.003;
+const AMBIENT_LIGHT = 0.25;
+
+@vertex
+fn vertexMain(@location(0) position: vec3f, @location(1) normal: vec3f) -> VertexOutput {
+  let worldPosition = object.model * vec4f(position, 1.0);
+  let lightSpacePosition = scene.lightViewProjection * worldPosition;
+  var output: VertexOutput;
+  output.position = scene.cameraViewProjection * worldPosition;
+  output.normal = (object.model * vec4f(normal, 0.0)).xyz;
+  output.shadowPosition = vec3f(
+    lightSpacePosition.xy * vec2f(0.5, -0.5) + 0.5,
+    lightSpacePosition.z
+  );
+  return output;
+}
+
+@fragment
+fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+  let visibility = textureSampleCompare(
+    shadowMap,
+    shadowSampler,
+    input.shadowPosition.xy,
+    input.shadowPosition.z - SHADOW_BIAS
+  );
+  let diffuse = max(dot(normalize(input.normal), scene.lightDirection), 0.0);
+  let lighting = AMBIENT_LIGHT + diffuse * visibility;
+  return vec4f(object.color.rgb * lighting, 1.0);
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=shadow-mapping" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <p>The lighting is simple <dfn>diffuse</dfn> lighting: surfaces that face the light are bright. The shadow only removes the diffuse part, so shadows are dark but not black, thanks to the <code>AMBIENT_LIGHT</code>.</p>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        We can skip dividing by <code>w</code> because an orthographic projection always gives <code>w = 1</code>. With a perspective light, divide <code>lightSpacePosition.xyz</code> by <code>lightSpacePosition.w</code> in the fragment shader.
+      </div>
+
+      <h2>Shadow Acne and Depth Bias</h2>
+      <p>A shadow map has a limited number of pixels, and depth values are not perfectly precise. Without a fix, a surface can shadow <em>itself</em>, giving ugly stripes. This is called <dfn>shadow acne</dfn>.</p>
+      <p>The fix is a small <dfn>depth bias</dfn>: pretend each pixel is a tiny bit closer to the light. That is what <code>- SHADOW_BIAS</code> does above.</p>
+      <ul>
+        <li>Bias too <strong>small</strong>: stripes of acne appear.</li>
+        <li>Bias too <strong>large</strong>: shadows detach from the objects. This is called <dfn>peter-panning</dfn>.</li>
+      </ul>
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        You can also set the bias on the shadow pipeline: <code>depthStencil: { ..., depthBias: 2, depthBiasSlopeScale: 2 }</code>. The slope scale adds more bias on surfaces that are steep to the light, where acne is worst.
+      </div>
+
+      <h2>Soft Shadows with PCF</h2>
+      <p>Each shadow map pixel is either lit or not, so shadow edges look hard and blocky. <dfn>PCF</dfn> (Percentage-Closer Filtering) softens them.</p>
+      <p>The idea is simple: compare several nearby points in the shadow map and <strong>average</strong> the results. Near an edge, some samples are lit and some are not, which gives a smooth value between 0 and 1.</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Average a 5×5 grid of shadow samples:</p>
+<pre><code data-language="wgsl">const SHADOW_MAP_SIZE = 1024.0;
+const FILTER_RADIUS = 2;
+const FILTER_SPREAD = 2.5;
+
+fn softShadow(shadowPosition: vec3f) -> f32 {
+  let texelSize = FILTER_SPREAD / SHADOW_MAP_SIZE;
+  let depth = shadowPosition.z - SHADOW_BIAS;
+  var total = 0.0;
+  var sampleCount = 0.0;
+  for (var y = -FILTER_RADIUS; y &lt;= FILTER_RADIUS; y++) {
+    for (var x = -FILTER_RADIUS; x &lt;= FILTER_RADIUS; x++) {
+      let offset = vec2f(f32(x), f32(y)) * texelSize;
+      total += textureSampleCompare(shadowMap, shadowSampler, shadowPosition.xy + offset, depth);
+      sampleCount += 1.0;
+    }
+  }
+  return total / sampleCount;
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=shadow-soft" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <p>In this example, the light also circles the scene. Each frame it builds a new <code>lightViewProjection</code> with <code>lookAt()</code> and writes it into the uniform buffer.</p>
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        Give the comparison sampler <code>magFilter: "linear"</code> and <code>minFilter: "linear"</code>. The GPU then blends four comparisons for every sample for free, which makes PCF even smoother.
+      </div>
+      <div class="callout callout-warning">
+        <strong>Warning</strong>
+        PCF samples further from the pixel, so it needs a slightly larger bias. The soft example uses <code>0.007</code> instead of <code>0.003</code>.
+      </div>
+
+      <h2>Key Objects</h2>
+      <table class="reference-table">
+        <thead><tr><th>Object</th><th>Where</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>Light view-projection</td><td>JavaScript</td><td><code>orthographic()</code> × <code>lookAt()</code> from the light</td></tr>
+          <tr><td>Shadow map</td><td>JavaScript</td><td>A <code>depth32float</code> texture with <code>RENDER_ATTACHMENT | TEXTURE_BINDING</code></td></tr>
+          <tr><td>Shadow pipeline</td><td>JavaScript</td><td>Vertex stage and <code>depthStencil</code> only, no fragment stage</td></tr>
+          <tr><td>Comparison sampler</td><td>JavaScript</td><td><code>createSampler({ compare: "less" })</code></td></tr>
+          <tr><td><code>texture_depth_2d</code></td><td>WGSL</td><td>The shadow map as seen by the shader</td></tr>
+          <tr><td><code>sampler_comparison</code></td><td>WGSL</td><td>The comparison sampler as seen by the shader</td></tr>
+          <tr><td><code>textureSampleCompare()</code></td><td>WGSL</td><td>Returns 1.0 if lit, 0.0 if in shadow</td></tr>
+          <tr><td>Depth bias</td><td>WGSL or pipeline</td><td>Stops shadow acne</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Exercises</h2>
+      <div class="exercise">
+        <p>1. Which two usage flags does a shadow map texture need?</p>
+        <details><summary>Show answer</summary><p><code>GPUTextureUsage.RENDER_ATTACHMENT</code> (to draw into it) and <code>GPUTextureUsage.TEXTURE_BINDING</code> (to read it in the main pass).</p></details>
+      </div>
+      <div class="exercise">
+        <p>2. Set <code>SHADOW_BIAS</code> to <code>0.0</code> in the sharp example. What do you see, and why?</p>
+        <details><summary>Show answer</summary><p>Stripes and speckles appear on lit surfaces. This is shadow acne: surfaces shadow themselves because of limited depth precision.</p></details>
+      </div>
+      <div class="exercise">
+        <p>3. Make the shadows lighter, so shadowed areas keep half of the diffuse light.</p>
+        <details><summary>Show answer</summary><pre><code data-language="wgsl">let lighting = AMBIENT_LIGHT + diffuse * mix(0.5, 1.0, visibility);</code></pre></details>
+      </div>
+      <div class="exercise">
+        <p>4. How many shadow map samples does the PCF function take when <code>FILTER_RADIUS</code> is 1?</p>
+        <details><summary>Show answer</summary><p>A 3×3 grid: 9 samples.</p></details>
+      </div>
+
+      <h2>Summary</h2>
+      <ul>
+        <li>A <strong>shadow map</strong> is a depth texture rendered from the light.</li>
+        <li>Use an <strong>orthographic</strong> projection for sunlight and <strong>perspective</strong> for spotlights.</li>
+        <li>The shadow pass has <strong>no fragment stage</strong>. It only writes depth.</li>
+        <li>A <strong>comparison sampler</strong> and <code>textureSampleCompare</code> tell you if a pixel is lit.</li>
+        <li>A small <strong>depth bias</strong> fixes shadow acne. <strong>PCF</strong> averages samples for soft edges.</li>
+      </ul>
+
+      <h2 id="official-docs">Official documentation</h2>
+<p class="official-links-lead">Go deeper with the specifications and reference documentation:</p>
+<ul class="cards official-cards"><li><a class="card" href="https://www.w3.org/TR/webgpu/#dom-gpusamplerdescriptor-compare" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WebGPU specification: sampler compare</h3><p>Comparison samplers, which turn a depth texture into a shadow test.</p></a></li><li><a class="card" href="https://www.w3.org/TR/WGSL/#texturesamplecompare" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WGSL specification: textureSampleCompare</h3><p>The built-in that compares a reference depth against the shadow map.</p></a></li><li><a class="card" href="https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createSampler" rel="noopener external"><span class="card-kicker">developer.mozilla.org</span><h3>MDN: GPUDevice.createSampler()</h3><p>Setting compare and filtering for smooth shadow edges.</p></a></li><li><a class="card" href="https://webgpu.github.io/webgpu-samples/" rel="noopener external"><span class="card-kicker">webgpu.github.io</span><h3>WebGPU Samples</h3><p>The official sample collection, including a complete shadow mapping demo.</p></a></li></ul>
+
+      <nav class="lesson-nav lesson-nav-bottom" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/compute-shaders/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/post-processing/" rel="next">Next ❯</a>
+      </nav>
+    </article>
+  </main>
+</div>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="/site/tutorials/">Tutorials</a>
+      <a href="/site/articles/">Articles</a>
+      <a href="/site/games/">Games</a>
+      <a href="/site/tools/">Tools</a>
+      <a href="/site/wgpu3d/">wgpu3d</a>
+      <a href="/site/resources/">WebGPU resources</a>
+      <a href="/site/about/">About</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </nav>
+    <p class="footer-note">WebGPU games, tools and tutorials, with notes on how they're made.</p>
+  </div>
+</footer>
+
+</body>
+</html>

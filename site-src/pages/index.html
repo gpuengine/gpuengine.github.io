@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>gpuengine — WebGPU Games, Developer Tools, GPU Compute &amp; Tutorials in Your Browser</title>
+<meta name="description" content="See what WebGPU can do: a 3D open-world driving game, a JSON viewer with GPU-powered search, compute shader experiments and step-by-step WebGPU tutorials. All free, all in your browser.">
+<meta property="og:title" content="gpuengine — WebGPU in action: games, tools and GPU computing in the browser">
+<meta property="og:description" content="Real-time 3D games, GPU-accelerated developer tools and WebGPU tutorials that run in your browser with nothing to install.">
+<meta property="og:type" content="website">
+<link rel="preload" as="image" href="/site/media/hero-poster.jpg">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "gpuengine",
+  "url": "{{origin}}/",
+  "description": "WebGPU games, GPU-accelerated developer tools, compute shader experiments and tutorials that run in the browser."
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  "name": "WebGPU projects on gpuengine",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "City Drive — WebGPU open-world driving game", "url": "{{origin}}/site/games/city-drive/" },
+    { "@type": "ListItem", "position": 2, "name": "JSON Viewer & Editor with WebGPU search", "url": "{{origin}}/site/json-viewer/" },
+    { "@type": "ListItem", "position": 3, "name": "WebGPU tutorials", "url": "{{origin}}/site/tutorials/" }
+  ]
+}
+</script>
+</head>
+<body>
+{{include header.html}}
+<main id="main">
+  <section class="hero" style="--hero-poster: url(/site/media/hero-poster.jpg)">
+    <video class="hero-video" autoplay muted loop playsinline preload="auto" poster="/site/media/hero-poster.jpg" aria-hidden="true">
+      <source src="/site/media/hero.av1.mp4" type="video/mp4; codecs=av01.0.08M.10">
+      <source src="/site/media/hero.h264.mp4" type="video/mp4">
+    </video>
+    <div class="hero-copy">
+      <h1>WebGPU, in&nbsp;your&nbsp;browser.</h1>
+      <p>Games, tools and tutorials powered by the GPU. Nothing to install.</p>
+    </div>
+    <div class="button-row hero-actions">
+      <a class="button" href="/site/wgpu3d/">Build with wgpu3d</a>
+      <a class="button button-glass" href="/site/json-viewer/">Open the JSON Viewer</a>
+      <a class="button button-glass" href="/site/tutorials/">Learn WebGPU</a>
+    </div>
+  </section>
+
+  <p class="strip">WebGPU · WGSL shaders · Compute shaders · Real-time 3D rendering · GPU data processing · Procedural worlds · Zero dependencies · Chrome, Edge, Safari &amp; Firefox</p>
+
+  <section class="section" aria-labelledby="fields-heading">
+    <h2 id="fields-heading">WebGPU across every field</h2>
+    <p class="section-lead">WebGPU gives web pages direct access to the graphics card for both drawing and general-purpose computing. Here is where gpuengine puts it to work, and what is coming next.</p>
+    <ul class="cards">
+      <li><a class="card" href="/site/games/"><span class="card-kicker">Live · Games &amp; 3D rendering</span><h3>Browser games</h3><p>Real-time 3D with shadows, lighting and post-processing. City Drive renders an endless procedural city with live traffic.</p></a></li>
+      <li><a class="card" href="/site/tools/"><span class="card-kicker">Live · Developer tools</span><h3>GPU-accelerated tools</h3><p>Everyday developer utilities that use the GPU where it pays off. The JSON viewer searches a 50 MB file in under a tenth of a second.</p></a></li>
+      <li><a class="card" href="/site/tutorials/"><span class="card-kicker">Live · Learning</span><h3>WebGPU tutorials</h3><p>From your first triangle to compute shaders, one runnable lesson at a time.</p></a></li>
+      <li><div class="card card-upcoming"><span class="card-kicker">Coming soon · GPU compute</span><h3>Particle and physics simulation</h3><p>A million compute-shader particles you can push around, and simulations that run entirely on the GPU.</p></div></li>
+      <li><div class="card card-upcoming"><span class="card-kicker">Planned · Image &amp; video</span><h3>Image and video processing</h3><p>Filters, resizing and effects applied by shaders in real time, with files that never leave your device.</p></div></li>
+      <li><div class="card card-upcoming"><span class="card-kicker">Planned · Data visualization</span><h3>Large-scale charts and maps</h3><p>Plotting millions of points smoothly by drawing them on the GPU instead of the page.</p></div></li>
+      <li><div class="card card-upcoming"><span class="card-kicker">Planned · Machine learning</span><h3>AI in the browser</h3><p>Running neural network inference on WebGPU, privately and without a server.</p></div></li>
+    </ul>
+  </section>
+
+  <section class="section" aria-labelledby="games-heading">
+    <h2 id="games-heading">WebGPU game: City Drive</h2>
+    <div class="feature-game">
+      <img src="/site/media/hero-poster.jpg" alt="Aerial view of a red car crossing a sunny noon intersection in City Drive, with a brownstone church on the corner, signal gantries and towers" width="1920" height="1080" loading="lazy">
+      <div>
+        <p>An endless procedural city you can drive through: downtown towers, suburbs, waterfronts, overpasses and live traffic. Every street is generated as you go and rendered with WebGPU, with no game engine or library underneath.</p>
+        <ul>
+          <li>Sun shadow maps and time-of-day lighting</li>
+          <li>World generation in a Web Worker, so frames never stall</li>
+          <li>Keyboard and touch controls, plus in-game video recording</li>
+        </ul>
+        <div class="button-row">
+          <a class="button" href="/site/games/city-drive/">About the game</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="tools-heading">
+    <h2 id="tools-heading">WebGPU developer tool: JSON Viewer &amp; Editor</h2>
+    <p class="section-lead">WebGPU is not only for graphics. Our JSON viewer copies your document to the GPU once, then a compute shader checks every position in parallel, so search stays fast on very large files.</p>
+    <a class="feature-screenshot" href="/site/json-viewer/"><img src="/site/media/json-viewer-screenshot.jpg" alt="JSON Viewer and Editor: raw JSON on the left, a collapsible tree on the right with search matches highlighted and copy buttons on the selected row" width="1920" height="987" loading="lazy"></a>
+    <ul class="feature-list">
+      <li>Validate JSON with exact line and column errors</li>
+      <li>Format and minify without losing number precision</li>
+      <li>Collapse, expand and edit nodes in a tree view</li>
+      <li>Search keys and values on the GPU</li>
+      <li>Copy any key, value or path</li>
+      <li>Runs locally: nothing is uploaded</li>
+    </ul>
+    <div class="button-row">
+      <a class="button" href="/site/json-viewer/">Open the JSON Viewer</a>
+      <a class="button button-ghost" href="/site/tools/">All tools</a>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="tutorials-heading">
+    <h2 id="tutorials-heading">Learn WebGPU step by step</h2>
+    <p class="section-lead">Twelve short lessons, one idea each, from your first triangle to shadows and post-processing. Every example runs in the Playground, so you can change the code and see the result.</p>
+    <ul class="cards">
+      <li><a class="card" href="/site/tutorials/webgpu-intro/"><span class="card-kicker">01 · Basics</span><h3>What is WebGPU?</h3><p>The new GPU API for the web, how it differs from WebGL, and which browsers run it.</p></a></li>
+      <li><a class="card" href="/site/tutorials/first-triangle/"><span class="card-kicker">02 · Basics</span><h3>Your first triangle</h3><p>Adapter, device, shader and render pass: the smallest complete WebGPU program.</p></a></li>
+      <li><a class="card" href="/site/tutorials/wgsl-basics/"><span class="card-kicker">03 · Basics</span><h3>WGSL basics</h3><p>Types, functions and entry points in the WebGPU shading language.</p></a></li>
+      <li><a class="card" href="/site/tutorials/camera-matrices/"><span class="card-kicker">06 · 3D</span><h3>Camera &amp; matrices</h3><p>Perspective, view and model matrices, and a spinning 3D cube.</p></a></li>
+      <li><a class="card" href="/site/tutorials/instancing/"><span class="card-kicker">09 · 3D</span><h3>Instancing</h3><p>Draw thousands of objects with one draw call.</p></a></li>
+      <li><a class="card" href="/site/tutorials/compute-shaders/"><span class="card-kicker">10 · Advanced</span><h3>Compute shaders</h3><p>Run general-purpose work on the GPU: particles, simulation and search.</p></a></li>
+    </ul>
+    <p class="section-more"><a href="/site/tutorials/">See all 12 lessons →</a></p>
+  </section>
+
+  <section class="section" aria-labelledby="articles-heading">
+    <h2 id="articles-heading">Deep dives</h2>
+    <p class="section-lead">Long-form articles on how the engine, the games and the tools actually work, with the trade-offs left in.</p>
+    <ul class="cards">
+      <li><a class="card" href="/site/articles/gpu-text-search/"><span class="card-kicker">Tools</span><h3>Searching text with a compute shader</h3><p>How the JSON viewer checks every character position on the GPU at once.</p><time class="card-date" datetime="2026-11-07">7 Nov 2026</time></a></li>
+      <li><a class="card" href="/site/articles/webgpu-vs-webgl/"><span class="card-kicker">WebGPU</span><h3>WebGPU vs WebGL: real numbers</h3><p>The same scene drawn with both APIs, measured, with a benchmark you can run.</p><time class="card-date" datetime="2026-11-02">2 Nov 2026</time></a></li>
+      <li><a class="card" href="/site/articles/sun-shadows/"><span class="card-kicker">City Drive</span><h3>Sun shadows, explained</h3><p>Shadow maps for a city that never ends.</p><time class="card-date" datetime="2026-10-28">28 Oct 2026</time></a></li>
+    </ul>
+    <p class="section-more"><a href="/site/articles/">All 11 articles →</a></p>
+  </section>
+
+  <section class="section" aria-labelledby="webgpu-heading">
+    <h2 id="webgpu-heading">What is WebGPU, and why does it matter?</h2>
+    <p class="section-lead">WebGPU is the modern standard for using the graphics card from a web page. It replaces WebGL and, for the first time, brings general-purpose GPU computing to the web.</p>
+    <div class="explainer">
+      <div>
+        <h3>Graphics and compute in one API</h3>
+        <p>WebGL could only draw. WebGPU can draw and compute: compute shaders run thousands of small programs in parallel, which makes it useful for simulation, data processing, search, image work and machine learning, not just 3D.</p>
+      </div>
+      <div>
+        <h3>Closer to how modern GPUs work</h3>
+        <p>WebGPU is modelled on Vulkan, Metal and Direct3D 12. Work is recorded up front and submitted in batches, so the CPU spends less time telling the GPU what to do and more frames reach the screen.</p>
+      </div>
+      <div>
+        <h3>Shaders written in WGSL</h3>
+        <p>WebGPU programs are written in WGSL, the WebGPU Shading Language. One shader runs the same on Windows, macOS, Linux, Android and iOS, in every browser that supports WebGPU.</p>
+      </div>
+      <div>
+        <h3>Runs where your users already are</h3>
+        <p>WebGPU ships in recent Chrome, Edge and Safari, and in Firefox on Windows. A link is all it takes: no app store, no download, no plugin.</p>
+      </div>
+    </div>
+    <p class="section-more">Read the official <a href="https://www.w3.org/TR/webgpu/" rel="noopener external">WebGPU specification</a> and <a href="https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API" rel="noopener external">MDN reference</a>, or browse <a href="/site/resources/">all WebGPU resources →</a></p>
+  </section>
+
+  <section class="section" aria-labelledby="faq-heading">
+    <h2 id="faq-heading">WebGPU questions</h2>
+    <dl class="faq">
+      <dt>Is WebGPU faster than WebGL?</dt>
+      <dd>Usually, for scenes with many objects, because WebGPU lowers the cost of each draw call. The bigger change is compute shaders, which WebGL does not have at all.</dd>
+      <dt>What can WebGPU be used for besides games?</dt>
+      <dd>Anything that benefits from parallel work: developer tools like our GPU-accelerated JSON search, image and video filters, data visualization, physics simulation and running AI models in the browser.</dd>
+      <dt>Does my browser support WebGPU?</dt>
+      <dd>Recent versions of Chrome, Edge and Safari support it, as does Firefox on Windows; <a href="https://caniuse.com/webgpu" rel="noopener external">Can I use</a> lists exact versions. Open <a href="/site/games/city-drive/play/">City Drive</a>: if it runs, your browser has WebGPU.</dd>
+      <dt>Do I need to install anything to use gpuengine?</dt>
+      <dd>No. Every game, tool and tutorial on this site runs in the browser tab, and tools like the JSON viewer process your data locally.</dd>
+    </dl>
+  </section>
+
+  <section class="section" aria-labelledby="engine-heading">
+    <h2 id="engine-heading">Inside the engine <span class="status-badge">Work in progress</span></h2>
+    <p class="section-lead">These are the systems behind the games and tools so far, and the list keeps growing.</p>
+    <ul class="feature-list">
+      <li>Procedural city districts and building kits</li>
+      <li>Road graph with junctions, curbs and overpasses</li>
+      <li>Traffic and pedestrians</li>
+      <li>Sun shadows and time-of-day lighting</li>
+      <li>Post-processing pipeline</li>
+      <li>World streaming in a Web Worker</li>
+      <li>Compute-shader text search</li>
+      <li>Virtualized views for millions of rows</li>
+    </ul>
+  </section>
+</main>
+{{include footer.html}}
+</body>
+</html>

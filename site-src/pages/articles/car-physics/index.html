@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>Car Physics Without a Physics Engine | gpuengine Articles</title>
+<meta name="description" content="How City Drive's car really moves: a few lines of throttle, drag and steering maths, box collisions, road surfaces, driving assists and a chase camera.">
+<meta property="og:title" content="Car Physics Without a Physics Engine">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2026-10-18">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Car Physics Without a Physics Engine",
+    "description": "The driving model behind City Drive: speed, steering, road surfaces, collisions, driving assists, touch controls and the chase camera, explained from the source.",
+    "datePublished": "2026-10-18",
+    "author": { "@type": "Person", "name": "Abhishek Sengar" },
+    "publisher": { "@type": "Organization", "name": "gpuengine", "url": "{{origin}}/" },
+    "url": "{{canonical}}",
+    "image": "{{origin}}/site/media/articles/car-physics-cruise.jpg"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Articles", "item": "{{origin}}/site/articles/" },
+      { "@type": "ListItem", "position": 2, "name": "Car physics without a physics engine", "item": "{{canonical}}" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+{{include header.html}}
+<main id="main">
+  <article class="article">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/articles/">Articles</a> / City Drive</nav>
+    <h1>Car physics without a physics engine</h1>
+    <p class="article-meta"><time datetime="2026-10-18">18 October 2026</time><span>13 min read</span><span>Gameplay · JavaScript · City Drive</span></p>
+
+    <p class="article-lead">The red car in <a href="/site/games/city-drive/">City Drive</a> has no rigid body, no tyre model and no physics library behind it. Its whole driving model is one JavaScript file of about 480 lines. This article goes through that file, <code>drive_physics.js</code>, and the handful of helpers around it, and explains why such simple maths still feels like driving.</p>
+
+    <nav class="article-toc" aria-label="Contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#loop">One function, once a frame</a></li>
+        <li><a href="#speed">Throttle, brakes and coasting</a></li>
+        <li><a href="#steering">Steering without tyres</a></li>
+        <li><a href="#surfaces">Road, sidewalk, lawn or plaza</a></li>
+        <li><a href="#collisions">Collisions are just boxes</a></li>
+        <li><a href="#assists">Zen steer, cruise and turn intent</a></li>
+        <li><a href="#touch">Touch controls</a></li>
+        <li><a href="#camera">The chase camera</a></li>
+        <li><a href="#limits">What it does not do</a></li>
+      </ol>
+    </nav>
+
+    <figure class="article-figure">
+      <img src="/site/media/articles/car-physics-cruise.jpg" alt="Chase camera view of the red car on a wide avenue between tall buildings, with the HUD showing 223 km/h and the cruise and Zen steer toggles switched on" width="1600" height="839" loading="lazy">
+      <figcaption>Cruise and Zen steer switched on. Cruise simply holds the throttle, so on a long straight the car reaches its 62 m/s (223 km/h) top speed. The camera falls behind at that speed because it chases the car with smoothing.</figcaption>
+    </figure>
+
+    <h2 id="loop">One function, once a frame</h2>
+    <p>Everything happens in <code>updateSimulation(dt)</code>, which the game calls once per rendered frame. There is no fixed timestep: <code>dt</code> is the real frame time in seconds, capped at 0.05 by the app shell so a stalled tab cannot teleport the car. Distances are metres and speeds are metres per second; the HUD multiplies by 3.6 to show km/h.</p>
+    <p>Each frame it finds the car on the road graph, classifies the surface, changes <code>car.speed</code> from the controls, lets the assists slow the car, turns it, moves it along its heading, pushes it out of anything it now overlaps, and settles it onto the ground. Then come the cosmetic body motion, camera and HUD.</p>
+    <p>The entire state of motion is a position, a heading and one signed speed. There is no velocity vector, so the car always travels exactly where its nose points. That one decision removes sliding, spinning and most of what makes physics engines hard to tune.</p>
+
+    <h2 id="speed">Throttle, brakes and coasting</h2>
+    <p>Speed changes in <code>applyThrottleAndBrakes</code>. Here it is in full:</p>
+<pre><code data-language="js">function applyThrottleAndBrakes(car, controls, dt) {
+  const maxSpeed = car.offRoad ? MAX_OFFROAD_SPEED : MAX_ROAD_SPEED;
+  if (controls.accelerating &amp;&amp; !controls.braking) {
+    const accelForce = (1.0 - (car.speed / maxSpeed) * 0.45) * 19.5;
+    car.speed += accelForce * dt;
+    car.accelPitch = lerp(car.accelPitch, 0.024, dt * 8);
+  } else if (controls.braking) {
+    if (car.speed > 1.0) {
+      car.speed -= 34.0 * dt;
+      car.accelPitch = lerp(car.accelPitch, -0.038, dt * 10);
+    } else {
+      car.speed -= 14.5 * dt;
+    }
+  } else {
+    car.speed *= (1.0 - 0.32 * dt);
+    car.accelPitch = lerp(car.accelPitch, 0.0, dt * 6);
+  }
+  if (controls.handbrake) car.speed *= (1.0 - 1.35 * dt);
+  if (car.offRoad) car.speed *= (1.0 - 0.65 * dt);
+  car.speed -= Math.sin(car.pitch) * HILL_GRAVITY_PULL * dt;
+  car.speed = clamp(car.speed, MAX_REVERSE_SPEED, maxSpeed);
+}</code></pre>
+    <p>Each branch is a familiar feeling with a number attached:</p>
+    <ul>
+      <li><strong>Throttle</strong> gives 19.5 m/s² from a standstill, fading linearly to 55% of that at top speed. The car never runs out of breath before its 62 m/s limit. In headless Chrome I measured 0 to 100 km/h in 1.59 seconds, as the formula predicts. It is a toy, on purpose.</li>
+      <li><strong>Brakes</strong> remove a constant 34 m/s². From 100 km/h the car stopped in 0.83 seconds. Below 1 m/s the brake key becomes reverse, down to −16 m/s.</li>
+      <li><strong>Coasting</strong> multiplies speed by <code>1 − 0.32·dt</code>, an exponential decay with a time constant of about three seconds, so the car rolls on when you lift off.</li>
+      <li><strong>Handbrake</strong> adds another 1.35 per second of decay.</li>
+      <li><strong>Off road</strong> the cap drops to 30 m/s and a 0.65 per second drag applies even with the throttle down. Throttle and drag balance at about 20.7 m/s (74 km/h) on flat ground, so the cap is never reached and the grass feels thick.</li>
+      <li><strong>Hills</strong> pull with <code>sin(pitch) × 4.5</code>. No terrain slope is steeper than 15%, so the pull is at most about 0.67 m/s², roughly half of real gravity.</li>
+    </ul>
+    <p><code>accelPitch</code> is cosmetic: the drawn body squats under throttle and dips under braking.</p>
+
+    <h2 id="steering">Steering without tyres</h2>
+    <p>Steering input is a number from −1 to 1: full lock from the keyboard, anything in between from touch. <code>turnCar</code> turns it into a change of heading:</p>
+<pre><code data-language="js">function turnCar(car, steerTarget, handbrake, dt) {
+  const speedSteerFactor = 1.0 / (1.0 + Math.abs(car.speed) * 0.019);
+  car.steerAngle = lerp(car.steerAngle, steerTarget, dt * 9.5);
+  const turnRate = car.steerAngle * (1.75 + (handbrake ? 0.85 : 0.0)) * speedSteerFactor;
+  if (Math.abs(car.speed) > 0.2) {
+    const drivingDirection = car.speed >= 0 ? 1 : -1;
+    car.heading += turnRate * drivingDirection * dt * Math.min(1.0, Math.abs(car.speed) / 5.0);
+  }
+}</code></pre>
+    <ul>
+      <li><strong>The wheel takes time to turn.</strong> <code>steerAngle</code> eases towards the target at 9.5 per second, so a tap gives a small correction, not a jerk.</li>
+      <li><strong>Steering softens with speed.</strong> The 1.75 rad/s base turn rate is divided by <code>1 + 0.019 × speed</code>, which stops the car flicking sideways at 200 km/h.</li>
+      <li><strong>No turning on the spot.</strong> Below 5 m/s the turn rate scales with speed, so the turning circle stays at about 3 metres.</li>
+      <li><strong>Reverse steers like a car.</strong> Negative speed flips the heading change.</li>
+    </ul>
+    <p>Speed divided by turn rate gives the full-lock turning radius:</p>
+    <table class="reference-table">
+      <thead><tr><th>Speed</th><th>Turn rate</th><th>Turning radius</th></tr></thead>
+      <tbody>
+        <tr><td>5 m/s (18 km/h)</td><td>1.60 rad/s</td><td>3.1 m</td></tr>
+        <tr><td>20 m/s (72 km/h)</td><td>1.27 rad/s</td><td>15.8 m</td></tr>
+        <tr><td>40 m/s (144 km/h)</td><td>0.99 rad/s</td><td>40 m</td></tr>
+        <tr><td>62 m/s (223 km/h)</td><td>0.80 rad/s</td><td>77 m</td></tr>
+      </tbody>
+    </table>
+    <p>At top speed that is about 5 g sideways, which no tyre could hold. Grip is simply infinite. The handbrake does not make the car slide either: it adds 0.85 to the turn rate, about 50% more, while bleeding off speed, and the particle code throws up tyre smoke. You get the look of a handbrake turn with none of the instability. A cosmetic body lean (<code>steerRoll</code>) and a small speed-scaled suspension bob finish the effect.</p>
+
+    <h2 id="surfaces">Road, sidewalk, lawn or plaza</h2>
+    <p>The world is a graph of roads (see the <a href="/site/articles/procedural-city/">procedural city article</a>). <code>carLocation</code> records whether the car is on an edge, at a fractional position counted in 4.2 metre segments, or inside a junction. Each frame the tracker searches only two segments either side of the last position, and jumps to another road if the car is more than 6 metres off its own and the other road is closer.</p>
+    <p><code>readRoadFrameUnderCar</code> then interpolates the road's centre and sideways "right" vector at the car. The dot product of the car's offset with that vector is the <strong>lateral offset</strong>, and surface classification is a ladder of comparisons on that one number:</p>
+<pre><code data-language="js">} else if (distanceFromCenter &lt;= blockInfo.roadHalfWidth - 0.08) {
+  car.surface = "road";
+} else if (blockInfo.isIntersection &amp;&amp; distanceFromCenter &lt; PARALLEL_STREET_LAT) {
+  car.surface = "cross";
+} else if (distanceFromCenter &lt;= blockInfo.roadHalfWidth + 2.8) {
+  car.surface = "sidewalk";
+} else if (sideIsParkOf(blockInfo, carSide) &amp;&amp; distanceFromCenter &lt; blockInfo.roadHalfWidth + PARK_LAWN_DEPTH_METERS &amp;&amp; !(carSide &lt; 0 ? roadFrame.startNode.hidesLeftSide : roadFrame.startNode.hidesRightSide)) {
+  car.surface = "lawn";
+} else {
+  car.surface = "plaza";
+}
+car.offRoad = car.surface !== "road" &amp;&amp; car.surface !== "cross";</code></pre>
+    <p>Inside a junction, anything within the radius plus 0.3 metres is <code>"cross"</code>. Everything that is not road or cross gets the off-road cap and drag, and the HUD names it, for example "Cruising Park Lawn".</p>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 800 270" role="img" aria-labelledby="surface-svg-title" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">
+        <title id="surface-svg-title">Surface bands by distance from the road centre: road, sidewalk, park lawn and plaza</title>
+        <g fill="currentColor">
+          <rect x="60" y="80" width="220" height="70" fill-opacity="0.22"/>
+          <rect x="280" y="80" width="110" height="70" fill-opacity="0.12"/>
+          <rect x="390" y="80" width="220" height="70" fill-opacity="0.07"/>
+          <rect x="610" y="80" width="150" height="70" fill-opacity="0.03"/>
+        </g>
+        <g fill="none" stroke="currentColor" stroke-opacity="0.5">
+          <rect x="60" y="80" width="700" height="70"/>
+          <line x1="280" y1="80" x2="280" y2="150"/>
+          <line x1="390" y1="80" x2="390" y2="150"/>
+          <line x1="610" y1="80" x2="610" y2="150" stroke-dasharray="5 5"/>
+        </g>
+        <line x1="60" y1="70" x2="60" y2="170" stroke="currentColor" stroke-width="2"/>
+        <line x1="160" y1="86" x2="160" y2="144" stroke-dasharray="6 6" style="stroke: var(--accent)" stroke-width="2"/>
+        <rect x="146" y="96" width="28" height="38" rx="5" style="fill: var(--accent)"/>
+        <g fill="currentColor">
+          <text x="70" y="102">road</text>
+          <text x="290" y="102">sidewalk</text>
+          <text x="400" y="102">lawn</text>
+          <text x="400" y="120" fill-opacity="0.7" font-size="11">park side only</text>
+          <text x="620" y="102">plaza</text>
+          <text x="620" y="120" fill-opacity="0.7" font-size="11">everything else</text>
+          <text x="20" y="60">road centre</text>
+          <text x="182" y="140" font-size="11" style="fill: var(--accent)">lane at 2.45 m</text>
+        </g>
+        <g fill="currentColor" fill-opacity="0.75" font-size="11" text-anchor="middle">
+          <text x="60" y="188">0</text>
+          <text x="280" y="188">hw − 0.08</text>
+          <text x="390" y="188">hw + 2.8</text>
+          <text x="610" y="188">hw + 41.6</text>
+        </g>
+        <g fill="currentColor" font-size="12">
+          <text x="60" y="222">lateral offset from the centre line, metres (not to scale; hw = road half-width, about 5.4 m)</text>
+          <text x="60" y="246" fill-opacity="0.75">road and junction = on road. sidewalk, lawn and plaza = off road: 30 m/s cap and extra drag</text>
+        </g>
+      </svg>
+      <figcaption>How <code>classifyCarSurface</code> labels the ground from one number, the car's distance from the road centre. On the first three segments of every city block, which are paved flat with no curb, anything out to 64 metres counts as "cross" instead.</figcaption>
+    </figure>
+
+    <p><code>followGround</code> eases the car's height towards the ground under it but never lets it sit more than 20 cm low, so mounting a curb looks like a quick hop. Off road it samples four points around the car to tilt the body over edges.</p>
+
+    <h2 id="collisions">Collisions are just boxes</h2>
+    <p>Collision shapes come from the same code that builds the scenery. While a road piece's geometry is being built, every upright box pushed through <code>pushBox</code> is also registered as an obstacle, and tree trunks, benches, fountains and similar props add their own footprints. <code>world_obstacles.js</code> keeps only what could touch the car body: boxes that reach higher than 0.38 metres above the ground and start lower than 1.45 metres. That band is the trick: curbs can be driven over and footbridges driven under, with no special cases.</p>
+    <p>Every obstacle is an oriented rectangle on the ground plane, and so is the car (1.02 metres half-width, 2.22 metres half-length). <code>boxSeparation</code> is a textbook separating axis test: project both boxes onto the four edge directions and, if they overlap on all four, push the car out along the smallest overlap.</p>
+<pre><code data-language="js">for (const [axisX, axisZ] of candidateAxes) {
+  const carExtent = carBox.halfWidth * Math.abs(carBox.rightX * axisX + carBox.rightZ * axisZ) + carBox.halfLength * Math.abs(carBox.forwardX * axisX + carBox.forwardZ * axisZ);
+  const obstacleExtent = obstacle.halfWidth * Math.abs(obstacleRightX * axisX + obstacleRightZ * axisZ) + obstacle.halfDepth * Math.abs(obstacleForwardX * axisX + obstacleForwardZ * axisZ);
+  const centerGap = toCarX * axisX + toCarZ * axisZ;
+  const depth = carExtent + obstacleExtent - Math.abs(centerGap);
+  if (depth &lt;= 0) return null;
+  if (!best || depth &lt; best.depth) {
+    const awayFromObstacle = centerGap >= 0 ? 1 : -1;
+    best = { nx: axisX * awayFromObstacle, nz: axisZ * awayFromObstacle, depth };
+  }
+}</code></pre>
+    <p>What makes a collision <em>feel</em> right is what happens to speed. <code>handleObstacleContact</code> takes the dot product of the travel direction with the push normal. Above 0.75, roughly within 41 degrees of head-on, the car bounces back at 22% of its speed, or stops if it was under 2 m/s. Otherwise it scrapes along and keeps <code>1 − 0.9 × alignment</code> of its speed, so a glancing touch costs little.</p>
+
+    <figure class="article-figure">
+      <img src="/site/media/articles/car-physics-collision.jpg" alt="The red car stopped on a lawn against a large stone pier, with a red border around the screen and the HUD reading 0 km/h and Collision! Reverse / Steer Clear" width="1600" height="839" loading="lazy">
+      <figcaption>Throttle held with no steering. The road bends left, the car carries straight on across the lawn and stops against a stone pier. The red frame and the "Collision!" label stay up for 0.38 seconds after each contact.</figcaption>
+    </figure>
+
+    <p>With traffic on, <code>pushCarOutOfVehicles</code> tests the car's next position against nearby vehicles. Running into the back of one throws you back at 2.5 to 8 m/s; a side hit cuts speed to 55%. Pedestrians are kinder: driving into one sets your speed to zero and cancels the move. Nobody is ever run over.</p>
+    <p>Water gets a softer wall. <code>keepCarOnLand</code> checks the car's corners against land shapes that reach 112 metres either side of each streamed road, plus the junction pads. If a corner falls outside, which is where the lakes are, <code>glideBackInside</code> eases the car back inland and bleeds off speed. It feels like a sandbank, not a wall.</p>
+
+    <h2 id="assists">Zen steer, cruise and turn intent</h2>
+    <p>Three toggles make the game playable with one hand: <strong>Cruise</strong> (X), <strong>Zen steer</strong> (Z) and <strong>turn intent</strong> (Q for left, E for right). Cruise is one <code>||</code> in <code>readDriveControls</code>:</p>
+<pre><code data-language="js">accelerating: playerInput.keys.up || state.cruiseHold,</code></pre>
+    <p>So cruise holds the throttle, not a speed, and will reach top speed. What keeps that safe is the junction assist. When Zen steer is on, or you have asked for a turn that exists, <code>planCrossroadAssist</code> picks the next junction's exit and a speed cap: 20 m/s straight on, 10 m/s left, 8 m/s right. Traffic keeps right, so a right turn is the tighter corner. Within 90 metres, <code>slowForCrossroad</code> applies a braking curve:</p>
+<pre><code data-language="js">const approachCap = crossroad.inside
+  ? cap
+  : Math.sqrt(cap * cap + 2.0 * 9.0 * Math.max(0, crossroad.distance - 6.0));
+if (car.speed > approachCap) {
+  car.speed = Math.max(approachCap, car.speed - 42.0 * dt);
+  car.accelPitch = lerp(car.accelPitch, -0.03, dt * 8);
+}</code></pre>
+    <p>That is v² = u² + 2as turned around: the fastest you can go now and still slow to the cap 6 metres before the junction, braking at 9 m/s². A logged approach shows the car riding the curve once it catches up with it:</p>
+    <table class="reference-table">
+      <thead><tr><th>Distance to junction</th><th>Measured speed</th><th>Curve value</th></tr></thead>
+      <tbody>
+        <tr><td>98 m</td><td>52.6 m/s</td><td>outside 90 m, no cap</td></tr>
+        <tr><td>84 m</td><td>50.2 m/s</td><td>42.5 m/s (still braking down)</td></tr>
+        <tr><td>63 m</td><td>37.7 m/s</td><td>37.8 m/s</td></tr>
+        <tr><td>45 m</td><td>33.2 m/s</td><td>33.2 m/s</td></tr>
+        <tr><td>23 m</td><td>26.6 m/s</td><td>26.6 m/s</td></tr>
+        <tr><td>5 m</td><td>20.0 m/s</td><td>20.0 m/s (straight-on cap)</td></tr>
+      </tbody>
+    </table>
+    <p>Steering takes over 3 metres before the junction. <code>junctionTurnPath</code> builds a quadratic Bézier curve from the arrival lane centre, through the point where the arrival and exit lane lines cross, to the exit lane centre. Each frame the car finds the nearest of 21 samples on the curve, aims 0.3 further along, and steers with simple pursuit: heading error times 2.4, clamped to full lock.</p>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 800 420" role="img" aria-labelledby="turn-svg-title" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">
+        <title id="turn-svg-title">Junction assist paths: quadratic curves from the arrival lane, bent at the point where the lane lines cross, to the exit lane</title>
+        <g fill="currentColor" fill-opacity="0.08">
+          <circle cx="400" cy="210" r="120"/>
+          <rect x="350" y="320" width="100" height="100"/>
+          <rect x="510" y="160" width="290" height="100"/>
+          <rect x="0" y="160" width="290" height="100"/>
+          <rect x="350" y="0" width="100" height="100"/>
+        </g>
+        <g fill="none" stroke="currentColor" stroke-opacity="0.35" stroke-dasharray="8 8">
+          <line x1="400" y1="330" x2="400" y2="420"/>
+          <line x1="400" y1="0" x2="400" y2="90"/>
+          <line x1="520" y1="210" x2="800" y2="210"/>
+          <line x1="0" y1="210" x2="280" y2="210"/>
+        </g>
+        <g fill="none" stroke="currentColor" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="3 4">
+          <line x1="430" y1="330" x2="430" y2="160"/>
+          <line x1="430" y1="240" x2="560" y2="240"/>
+          <line x1="430" y1="180" x2="250" y2="180"/>
+        </g>
+        <path d="M430 420 L430 330 Q430 240 520 240 L800 240" fill="none" stroke-width="3" style="stroke: var(--accent)"/>
+        <path d="M430 330 Q430 180 280 180 L0 180" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.7" stroke-dasharray="10 6"/>
+        <path d="M430 330 L430 0" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.45" stroke-dasharray="2 6"/>
+        <g fill="currentColor">
+          <circle cx="430" cy="330" r="5"/>
+          <circle cx="430" cy="240" r="5"/>
+          <circle cx="520" cy="240" r="5"/>
+          <circle cx="430" cy="180" r="4" fill-opacity="0.6"/>
+          <circle cx="280" cy="180" r="4" fill-opacity="0.6"/>
+        </g>
+        <rect x="433" y="266" width="16" height="26" rx="4" transform="rotate(32 441 279)" style="fill: var(--accent)"/>
+        <line x1="441" y1="279" x2="468" y2="251" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="468" cy="251" r="5" fill="none" stroke="currentColor" stroke-width="2"/>
+        <g fill="currentColor" font-size="12">
+          <text x="420" y="352" text-anchor="end">p0: arrival lane centre</text>
+          <text x="470" y="300">car</text>
+          <text x="480" y="226">aim: nearest t + 0.3</text>
+          <text x="530" y="275">p2: exit lane centre</text>
+          <text x="438" y="172">p1 (left)</text>
+          <text x="437" y="232">p1</text>
+          <text x="140" y="172" fill-opacity="0.75">left: 10 m/s</text>
+          <text x="640" y="232" style="fill: var(--accent)">right: 8 m/s</text>
+          <text x="440" y="40" fill-opacity="0.75">straight: 20 m/s</text>
+        </g>
+        <g fill="currentColor" font-size="12">
+          <text x="560" y="330">p1 is where the arrival and</text>
+          <text x="560" y="346">exit lane lines cross</text>
+          <text x="560" y="362">(dotted lines)</text>
+        </g>
+      </svg>
+      <figcaption>The junction assist's turning curves. Traffic keeps right, 2.45 metres from the centre line, so the right turn is the tight one and gets the lowest speed cap. If the two lane lines are nearly parallel, the middle control point falls back to halfway between the ends.</figcaption>
+    </figure>
+
+    <figure class="article-figure">
+      <img src="/site/media/articles/car-physics-turn.jpg" alt="Top-down view of a three-way junction with a round pad, zebra crossings on each arm and the small red car angled halfway through a right turn" width="1600" height="839" loading="lazy">
+      <figcaption>The same assist in the game, seen from a camera I pinned above the junction. Turn intent was set to right with E, and the car has slowed to the 8 m/s right-turn cap on its way from the bottom arm to the right-hand arm of this three-way junction.</figcaption>
+    </figure>
+
+    <p>Between junctions, <code>laneFollowSteer</code> aims at the lane centre the larger of 9 metres or 0.75 seconds ahead, with a gain of 2.2. Looking further ahead at speed stops it weaving. Cross more than 0.8 metres over the centre line and Zen steer keeps you on that side instead. For up to three seconds after a junction, lane following runs even with Zen steer off, so the car straightens into its new lane after a manual turn.</p>
+    <p>The driver always wins. Any steering input cancels the assist, and it stays off for 0.9 seconds after you let go. With traffic on, Zen steer also keeps a gap to the car ahead, using the rule described in the <a href="/site/articles/traffic-simulation/">traffic article</a>.</p>
+
+    <h2 id="touch">Touch controls</h2>
+    <p>On a phone, on-screen pedals set the same <code>playerInput.keys</code> flags as the keyboard, using pointer capture so a thumb sliding off a button cannot leave a key stuck. A steering pad gives an analogue <code>touchSteerValue</code>. You can also drive on the game view itself: touch to accelerate, slide sideways to steer, slide down to brake.</p>
+<pre><code data-language="js">canvas.addEventListener("pointermove", (event) => {
+  if (event.pointerId !== touchId) return;
+  const swipeX = event.clientX - startX;
+  const swipeY = event.clientY - startY;
+  const fullSteerSwipe = Math.max(TOUCH_MIN_STEER_SWIPE_PIXELS, canvas.clientWidth * TOUCH_STEER_SWIPE_SCREEN_FRACTION);
+  playerInput.touchSteerValue = clamp(-swipeX / fullSteerSwipe, -1.0, 1.0);
+  const isBraking = swipeY > TOUCH_BRAKE_SWIPE_PIXELS;
+  keys.up = !isBraking;
+  keys.down = isBraking;
+});</code></pre>
+    <p>Full lock is a swipe of 18% of the screen width (at least 48 pixels), so it feels the same on a phone and a tablet. Partial swipes go through the same <code>steerAngle</code> smoothing and give proportional turns.</p>
+
+    <h2 id="camera">The chase camera</h2>
+    <p>C cycles four cameras defined as plain data: Chase Cam, Action Low, Hood Cam and Heli Cam. Each follow camera moves a fraction of the way towards a point behind the car, and a look-at point ahead of it, every frame:</p>
+<pre><code data-language="js">const follow = Math.min(1.0, dt * mode.stiffness);
+const lookFollow = Math.min(1.0, follow * 1.2);
+camera.x = lerp(camera.x, car.x - axes.forwardX * mode.distance, follow);
+camera.y = lerp(camera.y, car.y - axes.forwardY * mode.distance + mode.height, follow);
+camera.z = lerp(camera.z, car.z - axes.forwardZ * mode.distance, follow);</code></pre>
+    <p>The chase camera sits 7.4 metres behind and 2.45 metres up with a stiffness of 8.5. The lag is a feature: accelerate and the car pulls away on screen, as in the first image; turn and you glimpse its side. The look-at point moves 20% faster, so the view leads into corners, and the field of view widens from 58 to 70 degrees with speed.</p>
+    <p>A lagging camera can end up inside a building, so <code>keepCameraOutOfObstacles</code> casts a ray from the car to the camera, slab-tests it against the collision boxes with 60 cm of clearance, and pulls the camera in to the first hit. Hood Cam is simply bolted to the body, and the cabin is left out of the mesh so it does not block the view.</p>
+
+    <section class="article-takeaways" aria-labelledby="takeaways-heading">
+      <h2 id="takeaways-heading">Key takeaways</h2>
+      <ul>
+        <li>One signed speed and one heading are enough for a car that feels good. Without a velocity vector there is no sliding to tune.</li>
+        <li>Each feeling is one term: linear-fade throttle, constant brakes, exponential coasting, extra drag off road, a small hill pull.</li>
+        <li>Steering that softens with speed and fades out below 5 m/s does most of the work a tyre model would.</li>
+        <li>Collision response is about speed, not position: bounce when head-on, scrape when glancing.</li>
+        <li>Assists use plain kinematics: a v² = u² + 2as braking curve, a Bézier turn path and pursuit steering.</li>
+        <li>Smoothed, slightly lagging cameras sell speed better than rigid ones.</li>
+      </ul>
+    </section>
+
+    <h2 id="limits">What it does not do</h2>
+    <p>The simplicity has costs:</p>
+    <ul>
+      <li><strong>No drifting or loss of grip.</strong> With no sideways velocity, the car cannot oversteer or spin.</li>
+      <li><strong>Frame-rate dependent smoothing.</strong> Smoothing is <code>lerp(a, b, dt × k)</code> and speed uses simple Euler steps: close to frame-rate independent at the 30 and 60 fps the game targets, but not exact.</li>
+      <li><strong>Simplified traffic collisions.</strong> Other vehicles are tested as boxes aligned with the player's car, ignoring their own heading, so angled hits are approximate.</li>
+      <li><strong>No damage.</strong> Collisions cost speed and play a sound, nothing more.</li>
+      <li><strong>One small quirk.</strong> The HUD shows "heading left" even when the junction ahead has no left arm; the assist then quietly goes straight on.</li>
+    </ul>
+    <p>None of this needed a physics engine: a few hundred lines of arithmetic, chosen for feel rather than accuracy. To try it, <a href="/site/games/city-drive/">play City Drive</a> and switch on Zen steer.</p>
+
+    <nav class="article-pager" aria-label="More articles">
+      <a href="/site/articles/streaming-world/" rel="prev"><small>Previous article</small>Streaming an open world with Web Workers</a>
+      <a href="/site/articles/traffic-simulation/" rel="next"><small>Next article</small>Traffic simulation on a road graph</a>
+    </nav>
+  </article>
+</main>
+{{include footer.html}}
+</body>
+</html>

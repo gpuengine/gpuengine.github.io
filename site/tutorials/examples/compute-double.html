@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lesson" content="/site/tutorials/compute-shaders/">
+<title>WebGPU example: Double numbers with a compute shader</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0f12; color: #e6e8eb; font: 16px/1.5 system-ui, sans-serif; }
+  main { padding: 0.5rem 1.5rem; }
+  h1 { font-size: 1.5rem; }
+  .message { padding: 1.5rem; }
+  .result { color: #7cf29c; }
+  pre { font: 15px/1.4 ui-monospace, monospace; color: #c7d2fe; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Doubling numbers on the GPU</h1>
+  <p id="summary">Working…</p>
+  <p id="timing" class="result"></p>
+  <pre id="values"></pre>
+</main>
+<script type="module">
+const adapter = await navigator.gpu?.requestAdapter();
+if (!adapter) {
+  document.body.innerHTML = '<p class="message">This example needs a browser with WebGPU.</p>';
+  throw new Error("WebGPU is not available");
+}
+const device = await adapter.requestDevice();
+
+const NUMBER_COUNT = 1_000_000;
+const WORKGROUP_SIZE = 64;
+const VALUES_TO_SHOW = 8;
+
+const input = new Float32Array(NUMBER_COUNT);
+for (let index = 0; index < NUMBER_COUNT; index++) {
+  input[index] = index;
+}
+
+const shaderModule = device.createShaderModule({
+  code: `
+    @group(0) @binding(0) var<storage, read_write> numbers: array<f32>;
+
+    @compute @workgroup_size(${WORKGROUP_SIZE})
+    fn computeMain(@builtin(global_invocation_id) id: vec3u) {
+      let index = id.x;
+      if (index >= arrayLength(&numbers)) {
+        return;
+      }
+      numbers[index] = numbers[index] * 2.0;
+    }
+  `
+});
+
+const pipeline = device.createComputePipeline({
+  layout: "auto",
+  compute: { module: shaderModule, entryPoint: "computeMain" }
+});
+
+const workBuffer = device.createBuffer({
+  size: input.byteLength,
+  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+});
+device.queue.writeBuffer(workBuffer, 0, input);
+
+const resultBuffer = device.createBuffer({
+  size: input.byteLength,
+  usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+});
+
+const bindGroup = device.createBindGroup({
+  layout: pipeline.getBindGroupLayout(0),
+  entries: [{ binding: 0, resource: { buffer: workBuffer } }]
+});
+
+const workgroupCount = Math.ceil(NUMBER_COUNT / WORKGROUP_SIZE);
+const gpuStartTime = performance.now();
+
+const encoder = device.createCommandEncoder();
+const pass = encoder.beginComputePass();
+pass.setPipeline(pipeline);
+pass.setBindGroup(0, bindGroup);
+pass.dispatchWorkgroups(workgroupCount);
+pass.end();
+encoder.copyBufferToBuffer(workBuffer, 0, resultBuffer, 0, input.byteLength);
+device.queue.submit([encoder.finish()]);
+
+await resultBuffer.mapAsync(GPUMapMode.READ);
+const output = new Float32Array(resultBuffer.getMappedRange().slice(0));
+resultBuffer.unmap();
+const gpuMilliseconds = performance.now() - gpuStartTime;
+
+const cpuStartTime = performance.now();
+const cpuOutput = new Float32Array(NUMBER_COUNT);
+for (let index = 0; index < NUMBER_COUNT; index++) {
+  cpuOutput[index] = input[index] * 2;
+}
+const cpuMilliseconds = performance.now() - cpuStartTime;
+
+const lines = [];
+for (let index = 0; index < VALUES_TO_SHOW; index++) {
+  lines.push(`${input[index]} × 2 = ${output[index]}`);
+}
+const lastIndex = NUMBER_COUNT - 1;
+lines.push("…");
+lines.push(`${input[lastIndex]} × 2 = ${output[lastIndex]}`);
+
+document.getElementById("summary").textContent =
+  `${NUMBER_COUNT.toLocaleString()} numbers, ${workgroupCount.toLocaleString()} workgroups of ${WORKGROUP_SIZE} threads.`;
+document.getElementById("values").textContent = lines.join("\n");
+document.getElementById("timing").textContent =
+  `GPU round trip (upload already done, compute, copy, read back): ${gpuMilliseconds.toFixed(2)} ms. ` +
+  `Same loop on the CPU: ${cpuMilliseconds.toFixed(2)} ms.`;
+</script>
+</body>
+</html>

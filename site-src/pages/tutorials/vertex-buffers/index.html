@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>WebGPU Vertex Buffers — Vertex Layouts and Index Buffers | WebGPU Tutorial</title>
+<meta name="description" content="Learn WebGPU vertex buffers: createBuffer, writeBuffer, vertex buffer layouts, @location inputs, interleaved attributes and index buffers with drawIndexed.">
+<meta property="og:title" content="WebGPU Vertex Buffers — Vertex Layouts and Index Buffers">
+<meta property="og:type" content="article">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "WebGPU Vertex Buffers — Vertex Layouts and Index Buffers",
+    "description": "Send vertex data from JavaScript to the GPU with vertex and index buffers.",
+    "proficiencyLevel": "Beginner",
+    "url": "{{canonical}}"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Tutorials", "item": "{{origin}}/site/tutorials/" },
+      { "@type": "ListItem", "position": 2, "name": "Vertex buffers", "item": "{{canonical}}" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+{{include header.html}}
+<div class="doc">
+  {{include tutorial-sidebar.html}}
+  <main id="main">
+    <article>
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/tutorials/">Tutorials</a> / Getting started</nav>
+      <h1>WebGPU <span class="lesson-title-accent">Vertex Buffers</span></h1>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/wgsl-basics/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/uniforms-bind-groups/" rel="next">Next ❯</a>
+      </nav>
+
+      <p class="lesson-intro">A <strong>vertex buffer</strong> is a block of GPU memory that holds the corners of your shapes.</p>
+      <p>So far, the corners were written inside the shader. Real programs load shapes from JavaScript, so the data must travel to the GPU. Vertex buffers are how it travels.</p>
+
+      <figure class="example-demo">
+        <iframe src="/site/tutorials/examples/index-buffer-shape.html" title="A rainbow hexagon drawn from a vertex buffer and an index buffer" loading="lazy"></iframe>
+        <figcaption>A hexagon built from 7 vertices and an index buffer.</figcaption>
+      </figure>
+
+      <h2>Why Use Buffers?</h2>
+      <p>In the last lessons, the corners lived in an <code>array(...)</code> inside the vertex shader. That works for one triangle, but:</p>
+      <ul>
+        <li>You must rewrite the shader to change the shape.</li>
+        <li>Models from files can have thousands of corners.</li>
+        <li>One shader should be able to draw many different shapes.</li>
+      </ul>
+      <p>The fix is to keep the shader general, and send the corners in a <strong>buffer</strong>.</p>
+
+      <h2>Step 1: Put the Data in a Float32Array</h2>
+      <p>The GPU reads raw bytes, not JavaScript arrays. A <code>Float32Array</code> stores numbers as 32-bit floats, which is exactly what the GPU expects.</p>
+<pre><code data-language="js">const vertices = new Float32Array([
+   0.0,  0.6,
+  -0.6, -0.5,
+   0.6, -0.5
+]);</code></pre>
+      <p>Each pair of numbers is one corner: an x and a y. Each float takes <strong>4 bytes</strong>, so this array is 24 bytes long.</p>
+
+      <h2>Step 2: Create the Buffer</h2>
+      <p>Use <code>device.createBuffer()</code> to reserve memory on the GPU. You give it a <strong>size</strong> in bytes and a <strong>usage</strong>:</p>
+<pre><code data-language="js">const vertexBuffer = device.createBuffer({
+  size: vertices.byteLength,
+  usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
+});</code></pre>
+      <p>The usage flags say what the buffer is for. They are combined with <code>|</code>:</p>
+      <table class="reference-table">
+        <thead><tr><th>Flag</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>GPUBufferUsage.VERTEX</code></td><td>The buffer can be used as a vertex buffer</td></tr>
+          <tr><td><code>GPUBufferUsage.INDEX</code></td><td>The buffer can be used as an index buffer</td></tr>
+          <tr><td><code>GPUBufferUsage.UNIFORM</code></td><td>The buffer can be used as a uniform buffer (next lesson)</td></tr>
+          <tr><td><code>GPUBufferUsage.COPY_DST</code></td><td>You can copy data into the buffer</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Step 3: Write the Data</h2>
+      <p><code>device.queue.writeBuffer()</code> copies your array into the buffer. The <code>0</code> is the byte offset to start writing at.</p>
+<pre><code data-language="js">device.queue.writeBuffer(vertexBuffer, 0, vertices);</code></pre>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        <code>writeBuffer</code> only works because the buffer has the <code>COPY_DST</code> usage. Without it, WebGPU reports a validation error.
+      </div>
+
+      <h2>Step 4: Describe the Layout</h2>
+      <p>The buffer is just bytes. The GPU needs to know how to cut them into vertices. A <dfn>vertex buffer layout</dfn> tells it:</p>
+<pre><code data-language="js">const vertexBufferLayout = {
+  arrayStride: 8,
+  attributes: [
+    { shaderLocation: 0, offset: 0, format: "float32x2" }
+  ]
+};</code></pre>
+      <ul>
+        <li><strong>arrayStride</strong> is the number of bytes from one vertex to the next. Two floats are 2 × 4 = 8 bytes.</li>
+        <li><strong>attributes</strong> lists the values inside each vertex.</li>
+        <li><strong>shaderLocation</strong> is the <code>@location</code> number the value goes to in the shader.</li>
+        <li><strong>offset</strong> is where the value starts, in bytes, inside one vertex.</li>
+        <li><strong>format</strong> is the type and count of the numbers.</li>
+      </ul>
+
+      <h2>Vertex Formats</h2>
+      <p>These are the formats you will use most:</p>
+      <table class="reference-table">
+        <thead><tr><th>Format</th><th>Size</th><th>WGSL type</th><th>Typical use</th></tr></thead>
+        <tbody>
+          <tr><td><code>float32</code></td><td>4 bytes</td><td><code>f32</code></td><td>A single value, like size</td></tr>
+          <tr><td><code>float32x2</code></td><td>8 bytes</td><td><code>vec2f</code></td><td>2D position, texture coordinate</td></tr>
+          <tr><td><code>float32x3</code></td><td>12 bytes</td><td><code>vec3f</code></td><td>3D position, RGB colour, normal</td></tr>
+          <tr><td><code>float32x4</code></td><td>16 bytes</td><td><code>vec4f</code></td><td>RGBA colour</td></tr>
+          <tr><td><code>uint32</code></td><td>4 bytes</td><td><code>u32</code></td><td>An ID or index</td></tr>
+          <tr><td><code>unorm8x4</code></td><td>4 bytes</td><td><code>vec4f</code></td><td>Compact RGBA colour, 0–255 read as 0.0–1.0</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Step 5: Read It in the Shader</h2>
+      <p>In the vertex shader, the value arrives as a parameter marked <code>@location(0)</code>. You no longer need <code>vertex_index</code>.</p>
+<pre><code data-language="wgsl">@vertex
+fn vertexMain(@location(0) position: vec2f) -> @builtin(position) vec4f {
+  return vec4f(position, 0.0, 1.0);
+}</code></pre>
+
+      <h2>Step 6: Use It in the Pipeline and Pass</h2>
+      <p>Add the layout to the pipeline's <code>vertex.buffers</code> list. Then, in the render pass, attach the buffer with <code>setVertexBuffer()</code> before you draw.</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Draw a triangle from a vertex buffer:</p>
+<pre><code data-language="js">const FLOATS_PER_VERTEX = 2;
+const BYTES_PER_FLOAT = 4;
+
+const pipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: {
+    module: shaderModule,
+    entryPoint: "vertexMain",
+    buffers: [{
+      arrayStride: FLOATS_PER_VERTEX * BYTES_PER_FLOAT,
+      attributes: [{ shaderLocation: 0, offset: 0, format: "float32x2" }]
+    }]
+  },
+  fragment: { module: shaderModule, entryPoint: "fragmentMain", targets: [{ format }] }
+});
+
+pass.setPipeline(pipeline);
+pass.setVertexBuffer(0, vertexBuffer);
+pass.draw(vertices.length / FLOATS_PER_VERTEX);</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=vertex-buffer-triangle" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        The first number in <code>setVertexBuffer(0, ...)</code> is the slot: the position of the layout in the <code>buffers</code> list. It is not the same as <code>shaderLocation</code>.
+      </div>
+
+      <h2>Interleaving Position and Colour</h2>
+      <p>A vertex can carry more than a position. You can put the colour right after it, in the same buffer. Storing different values side by side like this is called <dfn>interleaving</dfn>.</p>
+<pre><code data-language="js">const vertices = new Float32Array([
+   0.0,  0.7,   1.0, 0.3, 0.3,
+  -0.7, -0.6,   0.3, 1.0, 0.4,
+   0.7, -0.6,   0.3, 0.5, 1.0
+]);</code></pre>
+      <p>Each vertex is now 5 floats: x, y, red, green, blue. That is 20 bytes. The colour starts after the two position floats, at byte 8.</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Read position and colour from one interleaved buffer:</p>
+<pre><code data-language="js">const FLOATS_PER_VERTEX = 5;
+const BYTES_PER_FLOAT = 4;
+
+const vertexBufferLayout = {
+  arrayStride: FLOATS_PER_VERTEX * BYTES_PER_FLOAT,
+  attributes: [
+    { shaderLocation: 0, offset: 0, format: "float32x2" },
+    { shaderLocation: 1, offset: 2 * BYTES_PER_FLOAT, format: "float32x3" }
+  ]
+};</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=vertex-buffer-colors" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <p>In the shader, group the inputs in a struct. Each field's <code>@location</code> matches a <code>shaderLocation</code> in the layout:</p>
+<pre><code data-language="wgsl">struct VertexInput {
+  @location(0) position: vec2f,
+  @location(1) color: vec3f,
+}
+
+@vertex
+fn vertexMain(input: VertexInput) -> VertexOutput {
+  var output: VertexOutput;
+  output.position = vec4f(input.position, 0.0, 1.0);
+  output.color = input.color;
+  return output;
+}</code></pre>
+
+      <h2>Index Buffers</h2>
+      <p>A square is two triangles, which is 6 vertices. But a square only has 4 corners. Two corners are stored twice.</p>
+      <p>An <dfn>index buffer</dfn> fixes this. You store each corner once, then list which corners make each triangle:</p>
+<pre><code data-language="js">const vertices = new Float32Array([
+  -0.5, -0.5,
+   0.5, -0.5,
+   0.5,  0.5,
+  -0.5,  0.5
+]);
+
+const indices = new Uint16Array([
+  0, 1, 2,
+  0, 2, 3
+]);</code></pre>
+      <p>The numbers in <code>indices</code> are vertex numbers. Triangle one uses corners 0, 1 and 2. Triangle two uses corners 0, 2 and 3.</p>
+      <p>Create the index buffer with the <code>INDEX</code> usage. Then call <code>setIndexBuffer()</code> and draw with <code>drawIndexed()</code> instead of <code>draw()</code>:</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Draw a hexagon from 7 vertices and 18 indices:</p>
+<pre><code data-language="js">const indexBuffer = device.createBuffer({
+  size: indices.byteLength,
+  usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST
+});
+device.queue.writeBuffer(indexBuffer, 0, indices);
+
+pass.setPipeline(pipeline);
+pass.setVertexBuffer(0, vertexBuffer);
+pass.setIndexBuffer(indexBuffer, "uint16");
+pass.drawIndexed(indices.length);</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=index-buffer-shape" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <p>The hexagon has one centre vertex and six corner vertices. Each of its six triangles uses the centre, so without an index buffer the centre would be stored six times.</p>
+      <div class="callout callout-warning">
+        <strong>Warning</strong>
+        <code>writeBuffer</code> needs a byte size that is a multiple of 4. A <code>Uint16Array</code> with an odd number of indices is 2 bytes short. Add one extra <code>0</code> at the end to pad it, and still pass the real count to <code>drawIndexed()</code>.
+      </div>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        <code>"uint16"</code> indices go up to 65 535. For bigger models, use a <code>Uint32Array</code> and <code>"uint32"</code>.
+      </div>
+
+      <h2>Exercises</h2>
+      <div class="exercise">
+        <p>1. Each vertex has a 3D position (3 floats) and an RGBA colour (4 floats). What is the <code>arrayStride</code>?</p>
+        <details><summary>Show answer</summary><p>7 floats × 4 bytes = <code>28</code> bytes.</p></details>
+      </div>
+      <div class="exercise">
+        <p>2. In that same layout, what is the <code>offset</code> and <code>format</code> of the colour?</p>
+        <details><summary>Show answer</summary><pre><code data-language="js">{ shaderLocation: 1, offset: 12, format: "float32x4" }</code></pre></details>
+      </div>
+      <div class="exercise">
+        <p>3. Which usage flag is missing? <code>device.createBuffer({ size: 24, usage: GPUBufferUsage.VERTEX })</code>, followed by <code>writeBuffer</code>.</p>
+        <details><summary>Show answer</summary><p><code>GPUBufferUsage.COPY_DST</code>. You need it to copy data into the buffer.</p></details>
+      </div>
+      <div class="exercise">
+        <p>4. Write the index list for a square whose corners are stored in the order bottom-left, bottom-right, top-right, top-left.</p>
+        <details><summary>Show answer</summary><pre><code data-language="js">const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);</code></pre></details>
+      </div>
+
+      <h2>Summary</h2>
+      <ul>
+        <li>Vertex data goes in a <code>Float32Array</code>, then into a GPU buffer made with <code>device.createBuffer()</code>.</li>
+        <li><code>device.queue.writeBuffer()</code> copies data into a buffer with the <code>COPY_DST</code> usage.</li>
+        <li>The vertex buffer layout sets <code>arrayStride</code> and each attribute's <code>shaderLocation</code>, <code>offset</code> and <code>format</code>.</li>
+        <li>The shader reads each attribute through a matching <code>@location</code> input.</li>
+        <li>Index buffers let triangles share corners. Draw them with <code>setIndexBuffer()</code> and <code>drawIndexed()</code>.</li>
+      </ul>
+
+      {{official-links}}
+
+      <nav class="lesson-nav lesson-nav-bottom" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/wgsl-basics/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/uniforms-bind-groups/" rel="next">Next ❯</a>
+      </nav>
+    </article>
+  </main>
+</div>
+{{include footer.html}}
+</body>
+</html>

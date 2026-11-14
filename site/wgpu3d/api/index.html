@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://gpuengine.github.io/site/wgpu3d/api/">
+<meta property="og:url" content="https://gpuengine.github.io/site/wgpu3d/api/">
+<meta property="og:site_name" content="gpuengine">
+<meta property="og:image" content="https://gpuengine.github.io/site/media/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<script src="/site/site.js" defer></script>
+<script src="/site/code-highlight.js" defer></script>
+
+<title>wgpu3d API Reference | gpuengine</title>
+<meta name="description" content="Complete API reference for wgpu3d, the lightweight WebGPU 3D library: createApp, Scene, SceneObject, MeshBuilder, materials, cameras, input, vehicle and character controllers, prefabs and environment presets.">
+<meta property="og:title" content="wgpu3d API Reference">
+<meta property="og:type" content="article">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "wgpu3d API Reference",
+    "description": "Every function, class and option in the wgpu3d WebGPU library.",
+    "datePublished": "2026-11-08",
+    "author": { "@type": "Person", "name": "Abhishek Sengar" },
+    "publisher": { "@type": "Organization", "name": "gpuengine", "url": "https://gpuengine.github.io/" },
+    "url": "https://gpuengine.github.io/site/wgpu3d/api/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "wgpu3d", "item": "https://gpuengine.github.io/site/wgpu3d/" },
+      { "@type": "ListItem", "position": 2, "name": "API reference", "item": "https://gpuengine.github.io/site/wgpu3d/api/" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/site/tutorials/" data-nav-section>Tutorials</a>
+    <a href="/site/articles/" data-nav-section>Articles</a>
+    <a href="/site/games/" data-nav-section>Games</a>
+    <a href="/site/tools/" data-nav-section>Tools</a>
+    <a class="site-nav-cta" href="/site/wgpu3d/" aria-current="true" data-nav-section>wgpu3d</a>
+    <a class="site-nav-about" href="/site/about/" data-nav-section><svg class="site-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.42 0-8 2.24-8 5v2h16v-2c0-2.76-3.58-5-8-5Z"/></svg>About</a>
+  </nav>
+</header>
+
+<main id="main">
+  <article class="article">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/wgpu3d/">wgpu3d</a> / API reference</nav>
+    <h1>wgpu3d API reference</h1>
+    <p class="article-meta"><span>Version 0.1.0</span><span>All exports of <a href="/wgpu3d-0.1.0.min.js">wgpu3d-0.1.0.min.js</a></span><span><a href="https://github.com/gpuengine/gpuengine.github.io/blob/main/LICENSE" rel="noopener">GPL-2.0-or-later</a></span></p>
+    <p class="article-lead">Everything the library exports, grouped by job. Distances are in metres, angles in radians unless a name says degrees, and colours are hex strings like <code>"#ff8a3d"</code> or linear <code>[r, g, b]</code> arrays.</p>
+
+    <nav class="article-toc" aria-label="Contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#conventions">Conventions</a></li>
+        <li><a href="#app">createApp and App</a></li>
+        <li><a href="#scene">Scene and SceneObject</a></li>
+        <li><a href="#meshes">MeshBuilder, Mesh and material</a></li>
+        <li><a href="#cameras">Camera, ChaseCamera and OrbitCamera</a></li>
+        <li><a href="#input">Input</a></li>
+        <li><a href="#controllers">Controllers and behaviors</a></li>
+        <li><a href="#collisions">Collisions</a></li>
+        <li><a href="#prefabs">Prefabs</a></li>
+        <li><a href="#environment">Environment presets</a></li>
+        <li><a href="#helpers">Math helpers</a></li>
+      </ol>
+    </nav>
+
+    <h2 id="conventions">Conventions</h2>
+    <ul>
+      <li>Y is up. An object with <code>yaw = 0</code> faces −Z, and positive yaw turns it to the left, as in City Drive.</li>
+      <li>Rotation is applied as roll (around Z), then pitch (around X), then yaw (around Y). Positive pitch lifts an object's nose.</li>
+      <li>A behavior is either a function <code>(object, context) =&gt; {}</code> or an object with an <code>update(object, context)</code> method. The context holds <code>app</code>, <code>scene</code>, <code>input</code>, <code>camera</code>, <code>renderer</code>, <code>deltaSeconds</code> and <code>timeSeconds</code>.</li>
+    </ul>
+
+    <h2 id="app">createApp and App</h2>
+    <p class="api-signature">await createApp({ canvas, environment, camera, renderer, input })</p>
+    <p>Creates the WebGPU device, a scene, a camera and keyboard and touch input for <code>canvas</code>, and returns an <code>App</code>. It throws if WebGPU is unavailable, so check <code>isSupported()</code> first if you want a fallback.</p>
+    <table class="reference-table">
+      <thead><tr><th>Option</th><th>Default</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>environment</code></td><td><code>"noon"</code></td><td>A preset name or an object; see <a href="#environment">environment</a>.</td></tr>
+        <tr><td><code>camera</code></td><td><code>{}</code></td><td>Options for <code>new Camera()</code>.</td></tr>
+        <tr><td><code>renderer.pixelRatio</code></td><td>device ratio, at most 2</td><td>Lower it to trade sharpness for speed.</td></tr>
+        <tr><td><code>renderer.sampleCount</code></td><td><code>4</code></td><td>Antialiasing samples: 1 or 4.</td></tr>
+        <tr><td><code>renderer.shadows</code></td><td><code>true</code></td><td>Turns sun shadows on or off.</td></tr>
+        <tr><td><code>renderer.shadowExtent</code></td><td><code>40</code></td><td>Half the width, in metres, of the shadowed area around the camera's target.</td></tr>
+        <tr><td><code>renderer.shadowMapSize</code></td><td><code>2048</code></td><td>Shadow texture size in pixels.</td></tr>
+        <tr><td><code>input.bindings</code></td><td><code>DEFAULT_BINDINGS</code></td><td>Map of action names to <code>KeyboardEvent.code</code> values.</td></tr>
+        <tr><td><code>input.touchStick</code></td><td><code>true</code></td><td>Drag on the canvas to move, tap to jump.</td></tr>
+      </tbody>
+    </table>
+    <table class="reference-table">
+      <thead><tr><th>App member</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>app.scene</code>, <code>app.camera</code>, <code>app.input</code>, <code>app.renderer</code></td><td>The parts createApp made.</td></tr>
+        <tr><td><code>app.add(...objects)</code></td><td>Adds objects to the scene.</td></tr>
+        <tr><td><code>app.onUpdate(callback)</code></td><td>Runs <code>callback(context)</code> every frame after behaviors. Returns a function that removes it.</td></tr>
+        <tr><td><code>app.follow(object, options)</code></td><td>Puts a <code>ChaseCamera</code> behind the object.</td></tr>
+        <tr><td><code>app.orbit(options)</code></td><td>Puts an <code>OrbitCamera</code> on the canvas. With <code>subject</code>, it follows that object.</td></tr>
+        <tr><td><code>app.start()</code>, <code>app.stop()</code></td><td>Starts and stops the frame loop. Frames are skipped while the canvas is scrolled out of view.</td></tr>
+        <tr><td><code>app.step(seconds)</code></td><td>Advances and draws one frame by hand, for tests or recording.</td></tr>
+        <tr><td><code>app.timeSeconds</code>, <code>app.framesPerSecond</code></td><td>Clock and smoothed frame rate.</td></tr>
+        <tr><td><code>app.dispose()</code></td><td>Stops the loop and releases the GPU device and listeners.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="scene">Scene and SceneObject</h2>
+    <p class="api-signature">new SceneObject({ name, mesh, position, yaw, pitch, roll, scale, tint, glow, visible, castsShadow, collider, isSolid, tags })</p>
+    <p>Anything in the world. An object without a mesh is an invisible group that moves its children. <code>scale</code> may be a number or <code>[x, y, z]</code>, <code>tint</code> multiplies the mesh colours and <code>glow</code> adds light. With a <code>collider</code>, the object blocks controllers unless <code>isSolid</code> is false.</p>
+    <table class="reference-table">
+      <thead><tr><th>Member</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>add(...children)</code>, <code>remove(child)</code>, <code>removeFromParent()</code></td><td>Build the hierarchy. Children move with their parent.</td></tr>
+        <tr><td><code>addBehavior(behavior)</code></td><td>Runs every frame. Returns a function that removes it.</td></tr>
+        <tr><td><code>forward()</code>, <code>worldPosition()</code></td><td>Facing direction from yaw, and position after parents are applied.</td></tr>
+        <tr><td><code>traverse(visit)</code></td><td>Calls <code>visit</code> on the object and every descendant.</td></tr>
+        <tr><td><code>parts</code></td><td>Named child objects that prefabs and controllers share, such as a car's <code>body</code> and <code>wheels</code>.</td></tr>
+        <tr><td><code>speed</code></td><td>Set by controllers; the chase camera reads it.</td></tr>
+      </tbody>
+    </table>
+    <p class="api-signature">new Scene({ environment })</p>
+    <p>The root object. <code>setEnvironment(preset)</code> changes the lighting, <code>find(name)</code> and <code>withTag(tag)</code> look objects up, <code>touching(object, { tag, radius, height })</code> lists objects whose colliders overlap a circle around another object, and <code>solidColliders(except)</code> returns the blocking shapes controllers use.</p>
+
+    <h2 id="meshes">MeshBuilder, Mesh and material</h2>
+    <p class="api-signature">material(color, { gloss, glow })</p>
+    <p>A surface. <code>gloss</code> from 0 to 1 adds highlights and sky reflections; <code>glow</code> makes the surface emit its colour and stay visible through fog. Anywhere a material is expected you can also pass just a colour.</p>
+    <p class="api-signature">new MeshBuilder()</p>
+    <p>Collects triangles. Every method returns the builder, so calls chain, and <code>toMesh()</code> finishes it. Shapes take <code>center</code>, optional <code>yaw</code>, <code>pitch</code> and <code>roll</code>, and a <code>material</code>.</p>
+    <table class="reference-table">
+      <thead><tr><th>Method</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>box({ size: [x, y, z] })</code></td><td>Faces are shaded slightly differently, top lightest, so boxes read well without textures.</td></tr>
+        <tr><td><code>cylinder({ radius, radiusTop, height, sides, axis })</code></td><td><code>axis</code> is <code>"y"</code>, <code>"x"</code> or <code>"z"</code>.</td></tr>
+        <tr><td><code>cone({ radius, height, sides })</code></td><td>A cylinder with no top.</td></tr>
+        <tr><td><code>sphere({ radius, radii, sides, rings, isSmooth })</code></td><td><code>radii</code> makes an ellipsoid; <code>isSmooth: false</code> gives a faceted look.</td></tr>
+        <tr><td><code>plane({ size: [w, d], tiles, alternateMaterial })</code></td><td>A flat checkerboard on the XZ plane.</td></tr>
+        <tr><td><code>loft(sections)</code></td><td>Joins rings of points into a closed tube. The City Drive car body is a loft.</td></tr>
+        <tr><td><code>triangle(a, b, c, material)</code>, <code>quad(a, b, c, d, material)</code></td><td>Raw faces; winding does not matter.</td></tr>
+        <tr><td><code>withTransform({ position, yaw, pitch, roll, scale }, build)</code></td><td>Everything added inside <code>build(builder)</code> is moved by the transform.</td></tr>
+      </tbody>
+    </table>
+    <p><code>new Mesh(vertices)</code> wraps a <code>Float32Array</code> of 12 floats per vertex (position, normal, colour, gloss, glow, occlusion). Call <code>mesh.replaceVertices(array)</code> to change a mesh after it is drawn; the GPU copy updates next frame.</p>
+
+    <h2 id="cameras">Camera, ChaseCamera and OrbitCamera</h2>
+    <p class="api-signature">new Camera({ position, target, up, fieldOfView, near, far })</p>
+    <p><code>fieldOfView</code> is vertical, in degrees. <code>yaw()</code> returns the direction the camera faces, which the character controller uses to move relative to the view.</p>
+    <p class="api-signature">new ChaseCamera(camera, subject, { distance, height, lookAhead, lookHeight, stiffness, speedFieldOfView })</p>
+    <p>Trails behind the subject's yaw with springy smoothing. <code>speedFieldOfView</code> widens the view by that many degrees at speed.</p>
+    <p class="api-signature">new OrbitCamera(camera, element, { target, subject, distance, yaw, pitch, minDistance, maxDistance, autoRotateSpeed, ignoreTouch })</p>
+    <p>Drag to rotate, scroll or pinch to zoom. With <code>subject</code> it orbits a moving object.</p>
+
+    <h2 id="input">Input</h2>
+    <p>The app's <code>input</code> listens on the canvas, so keys only count while the canvas has focus and the page does not scroll when you press the arrow keys.</p>
+    <table class="reference-table">
+      <thead><tr><th>Member</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>isDown(action)</code></td><td>True while a key for the action is held.</td></tr>
+        <tr><td><code>wasPressed(action)</code></td><td>True only in the frame the action started, including touch taps for <code>jump</code> and <code>action</code>.</td></tr>
+        <tr><td><code>axis(negative, positive)</code></td><td>−1, 0 or 1 from two actions.</td></tr>
+        <tr><td><code>moveVector()</code></td><td><code>{ x, y }</code> from the movement keys and the touch stick, length at most 1.</td></tr>
+        <tr><td><code>press(action)</code></td><td>Triggers an action from your own buttons.</td></tr>
+      </tbody>
+    </table>
+    <p>The default actions are <code>forward</code>, <code>backward</code>, <code>left</code>, <code>right</code> (WASD and arrows), <code>jump</code> and <code>brake</code> (Space), <code>run</code> (Shift), <code>action</code> (E, Enter) and <code>camera</code> (C).</p>
+
+    <h2 id="controllers">Controllers and behaviors</h2>
+    <p class="api-signature">new VehicleController({ maxSpeed, maxReverseSpeed, acceleration, braking, coastDrag, handbrakeDrag, steering, collisionRadius, bounce, wheelRadius, groundHeight, bounds })</p>
+    <p>Arcade driving from City Drive: throttle that fades near top speed, braking, coasting drag, a handbrake, steering that softens with speed, a bounce on head-on hits and scraping along walls. It tilts <code>parts.body</code> under acceleration and in turns, spins <code>parts.wheels</code> and steers the ones tagged <code>"front-wheel"</code>. <code>bounds</code> is <code>{ minX, maxX, minZ, maxZ }</code>, and <code>groundHeight(x, z)</code> lets the vehicle follow terrain.</p>
+    <p class="api-signature">new CharacterController({ walkSpeed, runSpeed, acceleration, jumpSpeed, gravity, radius, height, stepHeight, turnRate, groundHeight })</p>
+    <p>Moves relative to the camera, runs with Shift, jumps, lands on top of solid boxes, slides along walls and swings <code>parts.leftLeg</code>, <code>rightLeg</code>, <code>leftArm</code> and <code>rightArm</code> while walking. <code>isGrounded</code> and <code>jumpCount</code>, the number of jumps so far, are readable.</p>
+    <p class="api-signature">spin(radiansPerSecond), bob({ height, speed })</p>
+    <p>Small behaviors for pickups and decoration.</p>
+
+    <h2 id="collisions">Collisions</h2>
+    <p><code>boxCollider([width, height, depth])</code> and <code>sphereCollider(radius)</code> describe shapes centred on the object; add <code>offset: [x, y, z]</code> to move them. Boxes turn with the object's yaw. <code>worldCollider(object)</code>, <code>circleOverlapsCollider(x, z, radius, collider)</code> and <code>resolveCircleAgainstColliders(position, radius, colliders, { bottom, top })</code> are the building blocks the controllers use, if you write your own.</p>
+
+    <h2 id="prefabs">Prefabs</h2>
+    <table class="reference-table">
+      <thead><tr><th>Function</th><th>Main options</th></tr></thead>
+      <tbody>
+        <tr><td><code>createCar()</code></td><td><code>paint</code>. Has <code>parts.body</code>, <code>parts.wheels</code> and brake lights for VehicleController.</td></tr>
+        <tr><td><code>createCharacter()</code></td><td><code>shirt</code>, <code>pants</code>, <code>skin</code>. Has limb parts for CharacterController.</td></tr>
+        <tr><td><code>createTree()</code></td><td><code>seed</code>, <code>height</code>, <code>kind</code> (<code>"round"</code> or <code>"pine"</code>), <code>foliage</code>, <code>trunk</code>, <code>position</code>.</td></tr>
+        <tr><td><code>createBuilding()</code></td><td><code>seed</code>, <code>width</code>, <code>depth</code>, <code>height</code>, <code>color</code>, <code>litShare</code> (share of glowing windows), <code>position</code>, <code>yaw</code>.</td></tr>
+        <tr><td><code>createGround()</code></td><td><code>size</code>, <code>tiles</code>, <code>color</code>, <code>alternateColor</code>.</td></tr>
+        <tr><td><code>createRoad()</code></td><td><code>length</code>, <code>width</code>, <code>yaw</code>, <code>height</code> (raise crossing roads so they sit on top).</td></tr>
+        <tr><td><code>createCrate()</code>, <code>createCoin()</code>, <code>createLampPost()</code></td><td><code>position</code>, plus <code>size</code>, <code>color</code> or <code>glow</code>. Coins are tagged <code>"coin"</code> and do not block movement.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="environment">Environment presets</h2>
+    <p>Pass a name, <code>"morning"</code>, <code>"noon"</code>, <code>"sunset"</code>, <code>"dusk"</code> or <code>"night"</code>, or an object that overrides a preset: <code>{ preset: "noon", sunDirection: [1, 0.5, 0], fogEnd: 500 }</code>. The fields are <code>skyTop</code>, <code>skyHorizon</code>, <code>groundColor</code>, <code>sunColor</code>, <code>sunDirection</code> (pointing toward the sun), <code>sunIntensity</code>, <code>ambientIntensity</code>, <code>fogStart</code>, <code>fogEnd</code> and <code>exposure</code>. Shadows switch off when the sun is near or below the horizon.</p>
+
+    <h2 id="helpers">Math helpers</h2>
+    <p><code>clamp</code>, <code>lerp</code>, <code>damp(current, target, rate, seconds)</code> for frame-rate-independent smoothing, <code>dampAngle</code>, <code>wrapAngle</code>, <code>degreesToRadians</code>, <code>forwardFromYaw</code>, and <code>createRandom(seed)</code>, a seeded generator with <code>range(min, max)</code>, <code>integer(min, max)</code> and <code>pick(items)</code>.</p>
+
+    <nav class="article-pager" aria-label="More pages">
+      <a href="/site/wgpu3d/" rel="prev"><small>Back to</small>wgpu3d overview</a>
+      <a href="/site/wgpu3d/getting-started/" rel="next"><small>Tutorial 1</small>Your first wgpu3d scene</a>
+    </nav>
+  </article>
+</main>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="/site/tutorials/">Tutorials</a>
+      <a href="/site/articles/">Articles</a>
+      <a href="/site/games/">Games</a>
+      <a href="/site/tools/">Tools</a>
+      <a href="/site/wgpu3d/">wgpu3d</a>
+      <a href="/site/resources/">WebGPU resources</a>
+      <a href="/site/about/">About</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </nav>
+    <p class="footer-note">WebGPU games, tools and tutorials, with notes on how they're made.</p>
+  </div>
+</footer>
+
+</body>
+</html>

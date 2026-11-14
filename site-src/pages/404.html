@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>Page not found | gpuengine</title>
+<meta name="robots" content="noindex">
+<script type="importmap">{ "imports": { "wgpu3d": "/{{wgpu3d-file}}" } }</script>
+<script type="module" src="/site/not-found-scene.js"></script>
+</head>
+<body>
+{{include header.html}}
+<main id="main" class="not-found">
+  <section class="not-found-stage" aria-labelledby="not-found-heading">
+    <canvas id="not-found-scene" aria-label="The number 404 built from orange blocks in a field at sunset, with the words page not found laid out in glowing tiles and a blue car you can drive"></canvas>
+    <p class="not-found-fallback" aria-hidden="true">404</p>
+    <div class="not-found-copy">
+      <p class="not-found-code">Error 404</p>
+      <h1 id="not-found-heading">Page not found</h1>
+      <p>That page doesn't exist, or it moved. The road ends here, but the car still works.</p>
+      <div class="button-row">
+        <a class="button" href="/">Home page</a>
+        <button id="not-found-drive" class="button button-ghost not-found-drive" type="button">Take the wheel</button>
+      </div>
+      <p class="not-found-hint">Drive with WASD or the arrow keys, Space to handbrake. On a phone, drag to drive.</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="not-found-links-heading">
+    <h2 id="not-found-links-heading">Maybe you were looking for</h2>
+    <ul class="cards">
+      <li><a class="card" href="/site/games/city-drive/"><span class="card-kicker">Game</span><h3>City Drive</h3><p>An endless procedural city you can drive through, rendered with WebGPU.</p></a></li>
+      <li><a class="card" href="/site/tutorials/"><span class="card-kicker">Learn</span><h3>WebGPU tutorials</h3><p>Twelve short lessons from your first triangle to shadows.</p></a></li>
+      <li><a class="card" href="/site/tools/"><span class="card-kicker">Tools</span><h3>Developer tools</h3><p>JSON viewer, visual CSS editor and a WebGPU benchmark.</p></a></li>
+      <li><a class="card" href="/site/wgpu3d/"><span class="card-kicker">Library</span><h3>wgpu3d</h3><p>The library behind this page: build scenes like this one in a few lines.</p></a></li>
+    </ul>
+  </section>
+</main>
+{{include footer.html}}
+</body>
+</html>

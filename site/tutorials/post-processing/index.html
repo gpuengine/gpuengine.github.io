@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://gpuengine.github.io/site/tutorials/post-processing/">
+<meta property="og:url" content="https://gpuengine.github.io/site/tutorials/post-processing/">
+<meta property="og:site_name" content="gpuengine">
+<meta property="og:image" content="https://gpuengine.github.io/site/media/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<script src="/site/site.js" defer></script>
+<script src="/site/code-highlight.js" defer></script>
+
+<title>WebGPU Post-Processing — Render to Texture, Blur and Vignette | WebGPU Tutorial</title>
+<meta name="description" content="Learn WebGPU post-processing: render to an offscreen texture, apply greyscale, vignette, colour grading and tone mapping, and chain ping-pong passes for blur.">
+<meta property="og:title" content="WebGPU Post-Processing — Render to Texture, Blur and Vignette">
+<meta property="og:type" content="article">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "WebGPU Post-Processing — Render to Texture, Blur and Vignette",
+    "description": "Full-screen effects in WebGPU with render-to-texture and ping-pong passes, explained with runnable examples.",
+    "proficiencyLevel": "Intermediate",
+    "url": "https://gpuengine.github.io/site/tutorials/post-processing/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Tutorials", "item": "https://gpuengine.github.io/site/tutorials/" },
+      { "@type": "ListItem", "position": 2, "name": "Post-processing", "item": "https://gpuengine.github.io/site/tutorials/post-processing/" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/site/tutorials/" aria-current="true" data-nav-section>Tutorials</a>
+    <a href="/site/articles/" data-nav-section>Articles</a>
+    <a href="/site/games/" data-nav-section>Games</a>
+    <a href="/site/tools/" data-nav-section>Tools</a>
+    <a class="site-nav-cta" href="/site/wgpu3d/" data-nav-section>wgpu3d</a>
+    <a class="site-nav-about" href="/site/about/" data-nav-section><svg class="site-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.42 0-8 2.24-8 5v2h16v-2c0-2.76-3.58-5-8-5Z"/></svg>About</a>
+  </nav>
+</header>
+
+<div class="doc">
+  <nav class="doc-sidebar" aria-label="Tutorials">
+  <a class="doc-sidebar-home" href="/site/tutorials/">WebGPU Tutorial Home</a>
+  <p class="doc-sidebar-heading">Getting started</p>
+  <a href="/site/tutorials/webgpu-intro/">1. What is WebGPU?</a>
+  <a href="/site/tutorials/first-triangle/">2. Your first triangle</a>
+  <a href="/site/tutorials/wgsl-basics/">3. WGSL basics</a>
+  <a href="/site/tutorials/vertex-buffers/">4. Vertex buffers</a>
+  <a href="/site/tutorials/uniforms-bind-groups/">5. Uniforms &amp; bind groups</a>
+  <p class="doc-sidebar-heading">Going 3D</p>
+  <a href="/site/tutorials/camera-matrices/">6. Camera &amp; matrices</a>
+  <a href="/site/tutorials/depth-buffer/">7. Depth buffer</a>
+  <a href="/site/tutorials/textures-samplers/">8. Textures &amp; samplers</a>
+  <a href="/site/tutorials/instancing/">9. Instancing</a>
+  <p class="doc-sidebar-heading">Advanced</p>
+  <a href="/site/tutorials/compute-shaders/">10. Compute shaders</a>
+  <a href="/site/tutorials/shadow-mapping/">11. Shadow mapping</a>
+  <a href="/site/tutorials/post-processing/" aria-current="page">12. Post-processing</a>
+  <p class="doc-sidebar-heading">Practice</p>
+  <a href="/site/tutorials/playground/?example=first-triangle" target="_blank">Playground</a>
+  <a href="/site/resources/">Official docs &amp; resources</a>
+</nav>
+
+  <main id="main">
+    <article>
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/tutorials/">Tutorials</a> / Advanced</nav>
+      <h1>WebGPU <span class="lesson-title-accent">Post-Processing</span></h1>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/shadow-mapping/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/" rel="next">Home ❯</a>
+      </nav>
+
+      <p class="lesson-intro"><strong>Post-processing</strong> means changing the whole image after the scene has been drawn.</p>
+      <p>Blur, glow, colour filters and old-film looks are all post-processing effects. They work like photo filters, but they run on the GPU every frame.</p>
+
+      <figure class="example-demo">
+        <iframe src="/site/tutorials/examples/post-vignette.html" title="Spinning coloured triangles with colour grading, chromatic aberration and a dark vignette" loading="lazy"></iframe>
+        <figcaption>Colour grading, chromatic aberration and a vignette, applied in a post-processing pass.</figcaption>
+      </figure>
+
+      <h2>How It Works</h2>
+      <p>Post-processing uses two passes:</p>
+      <ol>
+        <li><strong>Scene pass:</strong> draw the scene into an <strong>offscreen texture</strong> instead of the canvas.</li>
+        <li><strong>Post pass:</strong> draw one triangle that covers the whole canvas. Its fragment shader reads the offscreen texture, changes the colour, and writes the result to the canvas.</li>
+      </ol>
+      <p>Because the post pass runs once per pixel and can read <em>any</em> pixel of the scene, it can do things a normal shader cannot, such as blurring.</p>
+
+      <h2>Rendering to a Texture</h2>
+      <p>The offscreen texture needs two usages. <code>RENDER_ATTACHMENT</code> lets the scene pass draw into it. <code>TEXTURE_BINDING</code> lets the post pass read it, like the textures in <a href="/site/tutorials/textures-samplers/">Lesson 8</a>.</p>
+<pre><code data-language="js">const sceneTexture = device.createTexture({
+  size: [canvas.width, canvas.height],
+  format,
+  usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+});</code></pre>
+      <p>The scene pass is a normal render pass. Only the <code>view</code> changes:</p>
+<pre><code data-language="js">const scenePass = encoder.beginRenderPass({
+  colorAttachments: [{
+    view: sceneTexture.createView(),
+    clearValue: { r: 0.12, g: 0.16, b: 0.3, a: 1 },
+    loadOp: "clear",
+    storeOp: "store"
+  }]
+});</code></pre>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        Using the same <code>format</code> as the canvas means one pipeline can draw into both the offscreen texture and the canvas.
+      </div>
+
+      <h2>The Full-Screen Pass</h2>
+      <p>The post pass uses the <dfn>full-screen triangle</dfn> from <a href="/site/tutorials/wgsl-basics/">WGSL basics</a>. One large triangle covers the whole canvas, and passes a <code>uv</code> coordinate to the fragment shader.</p>
+<pre><code data-language="wgsl">struct VertexOutput {
+  @builtin(position) position: vec4f,
+  @location(0) uv: vec2f,
+}
+
+@group(0) @binding(0) var sceneTexture: texture_2d&lt;f32&gt;;
+@group(0) @binding(1) var sceneSampler: sampler;
+
+@vertex
+fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+  let corners = array(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  let corner = corners[vertexIndex];
+  var output: VertexOutput;
+  output.position = vec4f(corner, 0.0, 1.0);
+  output.uv = vec2f(corner.x * 0.5 + 0.5, 0.5 - corner.y * 0.5);
+  return output;
+}</code></pre>
+      <div class="callout callout-warning">
+        <strong>Warning</strong>
+        In clip space, y points <strong>up</strong>. In texture coordinates, y points <strong>down</strong>. That is why the shader uses <code>0.5 - corner.y * 0.5</code>. If you forget, the picture is upside down.
+      </div>
+
+      <h2>Greyscale</h2>
+      <p>The simplest effect turns colour into grey. Our eyes see green as brighter than red, and red as brighter than blue, so we use a weighted average called <dfn>luminance</dfn>.</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Show the left half in colour and the right half in greyscale:</p>
+<pre><code data-language="wgsl">@fragment
+fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+  let color = textureSample(sceneTexture, sceneSampler, input.uv).rgb;
+  let brightness = dot(color, vec3f(0.2126, 0.7152, 0.0722));
+  let grey = vec3f(brightness);
+  let isRightHalf = input.uv.x &gt; 0.5;
+  let isDivider = abs(input.uv.x - 0.5) &lt; 0.002;
+  var result = select(color, grey, isRightHalf);
+  result = select(result, vec3f(1.0), isDivider);
+  return vec4f(result, 1.0);
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=post-grayscale" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <p><code>select(a, b, condition)</code> returns <code>b</code> when the condition is true and <code>a</code> otherwise. It is WGSL's version of <code>condition ? b : a</code>.</p>
+      <p>Each frame draws the scene into the texture, then runs the post pass into the canvas:</p>
+<pre><code data-language="js">function frame(now) {
+  device.queue.writeBuffer(frameBuffer, 0, new Float32Array([now / 1000, aspect]));
+  const encoder = device.createCommandEncoder();
+  renderScene(encoder);
+  applyPostEffect(encoder);
+  device.queue.submit([encoder.finish()]);
+  requestAnimationFrame(frame);
+}</code></pre>
+
+      <h2>Simple Colour Effects</h2>
+      <p>Many effects only change one pixel at a time. Each one is a line or two of WGSL:</p>
+<pre><code data-language="wgsl">let inverted = 1.0 - color;
+let tinted = color * vec3f(1.15, 1.0, 0.8);
+let contrasted = (color - 0.5) * 1.3 + 0.5;
+let saturated = mix(vec3f(brightness), color, 1.4);
+let toneMapped = color / (color + 1.0);</code></pre>
+      <ul>
+        <li><strong>Invert</strong> makes a photo negative.</li>
+        <li><strong>Tint</strong> warms or cools the image. Together with contrast and saturation, this is called <dfn>colour grading</dfn>.</li>
+        <li><strong>Tone mapping</strong> squeezes very bright values (above 1.0) back into the 0 to 1 range, so bright lights do not turn flat white. The formula above is the simple <dfn>Reinhard</dfn> operator.</li>
+      </ul>
+
+      <h2>Vignette and Chromatic Aberration</h2>
+      <p>A <dfn>vignette</dfn> darkens the corners of the image, like an old camera lens. It depends on the distance from the centre.</p>
+      <p><dfn>Chromatic aberration</dfn> imitates a cheap lens: red, green and blue are read from slightly different places, giving coloured fringes near the edges.</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Combine chromatic aberration, colour grading and a vignette:</p>
+<pre><code data-language="wgsl">fn sampleWithAberration(uv: vec2f) -> vec3f {
+  let shift = (uv - 0.5) * ABERRATION_STRENGTH;
+  let red = textureSample(sceneTexture, sceneSampler, uv + shift).r;
+  let green = textureSample(sceneTexture, sceneSampler, uv).g;
+  let blue = textureSample(sceneTexture, sceneSampler, uv - shift).b;
+  return vec3f(red, green, blue);
+}
+
+fn gradeColor(color: vec3f) -> vec3f {
+  var graded = color * WARM_TINT;
+  graded = (graded - 0.5) * CONTRAST + 0.5;
+  let brightness = dot(graded, LUMINANCE_WEIGHTS);
+  graded = mix(vec3f(brightness), graded, SATURATION);
+  return clamp(graded, vec3f(0.0), vec3f(1.0));
+}
+
+fn vignette(uv: vec2f) -> f32 {
+  let distanceFromCenter = length(uv - 0.5);
+  return 1.0 - smoothstep(VIGNETTE_START, VIGNETTE_END, distanceFromCenter);
+}
+
+@fragment
+fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+  let color = sampleWithAberration(input.uv);
+  let graded = gradeColor(color);
+  return vec4f(graded * vignette(input.uv), 1.0);
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=post-vignette" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        The constants like <code>WARM_TINT</code> and <code>VIGNETTE_END</code> are at the top of the shader in the full example. Change them in the Playground to find a look you like. In a real app you would send them in a uniform buffer.
+      </div>
+
+      <h2>Chaining Passes: Ping-Pong</h2>
+      <p>Some effects need more than one pass. A <dfn>blur</dfn> is the classic example.</p>
+      <p>A good blur averages many pixels around each pixel. A 9×9 square would need 81 samples. Instead, blur <strong>horizontally</strong> first (9 samples), then blur that result <strong>vertically</strong> (9 more). The result looks the same, but costs only 18 samples.</p>
+      <p>A pass cannot read and write the same texture, so we use <strong>two textures</strong> and bounce between them. This is called <dfn>ping-pong</dfn>:</p>
+      <ol>
+        <li>Scene → texture A</li>
+        <li>Horizontal blur: A → B</li>
+        <li>Vertical blur: B → A (or → canvas on the last round)</li>
+        <li>Repeat steps 2 and 3 for a stronger blur.</li>
+      </ol>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>A two-pass Gaussian blur with ping-pong textures:</p>
+<pre><code data-language="wgsl">const WEIGHTS = array(0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
+
+@fragment
+fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+  let texelSize = 1.0 / vec2f(textureDimensions(sourceTexture));
+  let step = blur.direction * texelSize * blur.radius;
+  var color = textureSample(sourceTexture, sourceSampler, input.uv).rgb * WEIGHTS[0];
+  for (var index = 1; index &lt; 5; index++) {
+    let offset = step * f32(index);
+    color += textureSample(sourceTexture, sourceSampler, input.uv + offset).rgb * WEIGHTS[index];
+    color += textureSample(sourceTexture, sourceSampler, input.uv - offset).rgb * WEIGHTS[index];
+  }
+  return vec4f(color, 1.0);
+}</code></pre>
+<pre><code data-language="js">renderScene(encoder);
+for (let iteration = 0; iteration &lt; BLUR_ITERATIONS; iteration++) {
+  const isLastIteration = iteration === BLUR_ITERATIONS - 1;
+  runBlurPass(encoder, horizontalBlurFromA, textureB.createView());
+  const verticalTarget = isLastIteration ? context.getCurrentTexture().createView() : textureA.createView();
+  runBlurPass(encoder, verticalBlurFromB, verticalTarget);
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=post-blur" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <p>The same shader does both directions. A uniform <code>direction</code> of <code>(1, 0)</code> blurs sideways and <code>(0, 1)</code> blurs up and down. The weights come from a bell curve (a <dfn>Gaussian</dfn>), so near pixels count more than far ones. They add up to 1, so the image keeps its brightness.</p>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        Each bind group fixes which texture is read: <code>horizontalBlurFromA</code> always reads A, and <code>verticalBlurFromB</code> always reads B. Only the target view changes. You create the bind groups once, not every frame.
+      </div>
+
+      <h2>Common Effects</h2>
+      <table class="reference-table">
+        <thead><tr><th>Effect</th><th>The idea in WGSL</th></tr></thead>
+        <tbody>
+          <tr><td>Greyscale</td><td><code>vec3f(dot(color, vec3f(0.2126, 0.7152, 0.0722)))</code></td></tr>
+          <tr><td>Invert</td><td><code>1.0 - color</code></td></tr>
+          <tr><td>Sepia</td><td>Greyscale, then multiply by a brown tint such as <code>vec3f(1.2, 1.0, 0.8)</code></td></tr>
+          <tr><td>Colour grading</td><td>Tint, contrast <code>(color - 0.5) * k + 0.5</code> and saturation with <code>mix()</code></td></tr>
+          <tr><td>Tone mapping</td><td><code>color / (color + 1.0)</code></td></tr>
+          <tr><td>Vignette</td><td><code>color * (1.0 - smoothstep(start, end, length(uv - 0.5)))</code></td></tr>
+          <tr><td>Chromatic aberration</td><td>Sample red, green and blue at slightly different <code>uv</code> values</td></tr>
+          <tr><td>Pixelate</td><td><code>floor(uv * blocks) / blocks</code> before sampling</td></tr>
+          <tr><td>Blur</td><td>Weighted average of neighbours, horizontal then vertical</td></tr>
+          <tr><td>Bloom</td><td>Keep only bright pixels, blur them, add them back to the scene</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Exercises</h2>
+      <div class="exercise">
+        <p>1. Which two usage flags does an offscreen scene texture need?</p>
+        <details><summary>Show answer</summary><p><code>GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING</code></p></details>
+      </div>
+      <div class="exercise">
+        <p>2. Change the greyscale example so the right half is inverted instead of grey.</p>
+        <details><summary>Show answer</summary><pre><code data-language="wgsl">var result = select(color, 1.0 - color, isRightHalf);</code></pre></details>
+      </div>
+      <div class="exercise">
+        <p>3. Why can the blur not read and write the same texture in one pass?</p>
+        <details><summary>Show answer</summary><p>WebGPU does not allow a texture to be a render attachment and a bound texture in the same pass. Also, pixels would read neighbours that were already blurred. Ping-pong between two textures solves both problems.</p></details>
+      </div>
+      <div class="exercise">
+        <p>4. Make the vignette example pixelated, with 80 blocks across the screen.</p>
+        <details><summary>Show answer</summary><p>Snap the <code>uv</code> to a grid before sampling:</p><pre><code data-language="wgsl">let blocks = 80.0;
+let pixelatedUv = (floor(input.uv * blocks) + 0.5) / blocks;
+let color = sampleWithAberration(pixelatedUv);</code></pre></details>
+      </div>
+
+      <h2>Summary</h2>
+      <ul>
+        <li>Draw the scene into an <strong>offscreen texture</strong> with <code>RENDER_ATTACHMENT | TEXTURE_BINDING</code>.</li>
+        <li>A <strong>full-screen triangle</strong> pass samples that texture and writes the changed colours to the canvas.</li>
+        <li>Greyscale, invert, colour grading, tone mapping and vignette each take only a few lines of WGSL.</li>
+        <li>Chain passes with two <strong>ping-pong</strong> textures. A blur is a horizontal pass followed by a vertical pass.</li>
+      </ul>
+
+      <h2>What Next?</h2>
+      <p>Congratulations! You have finished the WebGPU tutorial. You can now draw 3D scenes with cameras, textures, instancing, compute shaders, shadows and post-processing.</p>
+      <p>See all of these ideas working together in a real game: <a href="/site/games/city-drive/">City Drive</a> runs entirely on WebGPU in your browser. For deeper dives into specific topics, read the <a href="/site/articles/">articles</a>. And keep experimenting in the <a href="/site/tutorials/playground/?example=post-vignette" target="_blank">Playground</a>: the best way to learn graphics is to change a number and see what happens.</p>
+
+      <h2 id="official-docs">Official documentation</h2>
+<p class="official-links-lead">Go deeper with the specifications and reference documentation:</p>
+<ul class="cards official-cards"><li><a class="card" href="https://developer.mozilla.org/en-US/docs/Web/API/GPUTexture/createView" rel="noopener external"><span class="card-kicker">developer.mozilla.org</span><h3>MDN: GPUTexture.createView()</h3><p>Views that let one texture be rendered to, then sampled.</p></a></li><li><a class="card" href="https://developer.mozilla.org/en-US/docs/Web/API/GPUCommandEncoder/beginRenderPass" rel="noopener external"><span class="card-kicker">developer.mozilla.org</span><h3>MDN: GPUCommandEncoder.beginRenderPass()</h3><p>Rendering into an offscreen texture instead of the canvas.</p></a></li><li><a class="card" href="https://www.w3.org/TR/webgpu/#render-passes" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WebGPU specification: render passes</h3><p>Attachments, load and store operations between passes.</p></a></li><li><a class="card" href="https://webgpu.github.io/webgpu-samples/" rel="noopener external"><span class="card-kicker">webgpu.github.io</span><h3>WebGPU Samples</h3><p>Official examples of image blur and other multi-pass effects.</p></a></li></ul>
+
+      <nav class="lesson-nav lesson-nav-bottom" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/shadow-mapping/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/" rel="next">Home ❯</a>
+      </nav>
+    </article>
+  </main>
+</div>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="/site/tutorials/">Tutorials</a>
+      <a href="/site/articles/">Articles</a>
+      <a href="/site/games/">Games</a>
+      <a href="/site/tools/">Tools</a>
+      <a href="/site/wgpu3d/">wgpu3d</a>
+      <a href="/site/resources/">WebGPU resources</a>
+      <a href="/site/about/">About</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </nav>
+    <p class="footer-note">WebGPU games, tools and tutorials, with notes on how they're made.</p>
+  </div>
+</footer>
+
+</body>
+</html>

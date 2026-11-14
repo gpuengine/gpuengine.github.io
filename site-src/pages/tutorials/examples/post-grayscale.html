@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lesson" content="/site/tutorials/post-processing/">
+<title>WebGPU example: Greyscale post-processing</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0f12; color: #e6e8eb; font-family: system-ui, sans-serif; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .message { padding: 1.5rem; }
+</style>
+</head>
+<body>
+<canvas></canvas>
+<script type="module">
+const adapter = await navigator.gpu?.requestAdapter();
+if (!adapter) {
+  document.body.innerHTML = '<p class="message">This example needs a browser with WebGPU.</p>';
+  throw new Error("WebGPU is not available");
+}
+const device = await adapter.requestDevice();
+const canvas = document.querySelector("canvas");
+canvas.width = canvas.clientWidth * devicePixelRatio;
+canvas.height = canvas.clientHeight * devicePixelRatio;
+const context = canvas.getContext("webgpu");
+const format = navigator.gpu.getPreferredCanvasFormat();
+context.configure({ device, format });
+
+const SHAPE_COUNT = 16;
+const aspect = canvas.width / canvas.height;
+
+const sceneModule = device.createShaderModule({
+  code: `
+    struct Frame {
+      time: f32,
+      aspect: f32,
+    }
+
+    struct VertexOutput {
+      @builtin(position) position: vec4f,
+      @location(0) color: vec3f,
+    }
+
+    const SHAPE_COUNT = ${SHAPE_COUNT}.0;
+    const TAU = 6.2831853;
+
+    @group(0) @binding(0) var<uniform> frame: Frame;
+
+    fn rotate(point: vec2f, angle: f32) -> vec2f {
+      return vec2f(
+        point.x * cos(angle) - point.y * sin(angle),
+        point.x * sin(angle) + point.y * cos(angle)
+      );
+    }
+
+    @vertex
+    fn vertexMain(
+      @builtin(vertex_index) vertexIndex: u32,
+      @builtin(instance_index) instanceIndex: u32
+    ) -> VertexOutput {
+      let corners = array(vec2f(0.0, 0.22), vec2f(-0.19, -0.11), vec2f(0.19, -0.11));
+      let ordinal = f32(instanceIndex);
+      let orbitAngle = ordinal / SHAPE_COUNT * TAU + frame.time * 0.3;
+      let orbitRadius = 0.6 + 0.15 * sin(frame.time * 1.3 + ordinal * 2.0);
+      let center = vec2f(cos(orbitAngle), sin(orbitAngle)) * orbitRadius;
+      let corner = rotate(corners[vertexIndex], frame.time * 1.5 + ordinal);
+      let hue = ordinal / SHAPE_COUNT;
+      var output: VertexOutput;
+      output.position = vec4f((center + corner) / vec2f(frame.aspect, 1.0), 0.0, 1.0);
+      output.color = 0.5 + 0.5 * cos(TAU * (hue + vec3f(0.0, 0.33, 0.67)));
+      return output;
+    }
+
+    @fragment
+    fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+      return vec4f(input.color, 1.0);
+    }
+  `
+});
+
+const postModule = device.createShaderModule({
+  code: `
+    struct VertexOutput {
+      @builtin(position) position: vec4f,
+      @location(0) uv: vec2f,
+    }
+
+    @group(0) @binding(0) var sceneTexture: texture_2d<f32>;
+    @group(0) @binding(1) var sceneSampler: sampler;
+
+    @vertex
+    fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+      let corners = array(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+      let corner = corners[vertexIndex];
+      var output: VertexOutput;
+      output.position = vec4f(corner, 0.0, 1.0);
+      output.uv = vec2f(corner.x * 0.5 + 0.5, 0.5 - corner.y * 0.5);
+      return output;
+    }
+
+    @fragment
+    fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+      let color = textureSample(sceneTexture, sceneSampler, input.uv).rgb;
+      let brightness = dot(color, vec3f(0.2126, 0.7152, 0.0722));
+      let grey = vec3f(brightness);
+      let isRightHalf = input.uv.x > 0.5;
+      let isDivider = abs(input.uv.x - 0.5) < 0.002;
+      var result = select(color, grey, isRightHalf);
+      result = select(result, vec3f(1.0), isDivider);
+      return vec4f(result, 1.0);
+    }
+  `
+});
+
+const scenePipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module: sceneModule, entryPoint: "vertexMain" },
+  fragment: { module: sceneModule, entryPoint: "fragmentMain", targets: [{ format }] }
+});
+
+const postPipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module: postModule, entryPoint: "vertexMain" },
+  fragment: { module: postModule, entryPoint: "fragmentMain", targets: [{ format }] }
+});
+
+const sceneTexture = device.createTexture({
+  size: [canvas.width, canvas.height],
+  format,
+  usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
+});
+
+const sceneSampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
+
+const frameBuffer = device.createBuffer({
+  size: 16,
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+});
+
+const sceneBindGroup = device.createBindGroup({
+  layout: scenePipeline.getBindGroupLayout(0),
+  entries: [{ binding: 0, resource: { buffer: frameBuffer } }]
+});
+
+const postBindGroup = device.createBindGroup({
+  layout: postPipeline.getBindGroupLayout(0),
+  entries: [
+    { binding: 0, resource: sceneTexture.createView() },
+    { binding: 1, resource: sceneSampler }
+  ]
+});
+
+function renderScene(encoder) {
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: sceneTexture.createView(),
+      clearValue: { r: 0.12, g: 0.16, b: 0.3, a: 1 },
+      loadOp: "clear",
+      storeOp: "store"
+    }]
+  });
+  pass.setPipeline(scenePipeline);
+  pass.setBindGroup(0, sceneBindGroup);
+  pass.draw(3, SHAPE_COUNT);
+  pass.end();
+}
+
+function applyPostEffect(encoder) {
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: context.getCurrentTexture().createView(),
+      loadOp: "clear",
+      storeOp: "store"
+    }]
+  });
+  pass.setPipeline(postPipeline);
+  pass.setBindGroup(0, postBindGroup);
+  pass.draw(3);
+  pass.end();
+}
+
+function frame(now) {
+  device.queue.writeBuffer(frameBuffer, 0, new Float32Array([now / 1000, aspect]));
+  const encoder = device.createCommandEncoder();
+  renderScene(encoder);
+  applyPostEffect(encoder);
+  device.queue.submit([encoder.finish()]);
+  requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

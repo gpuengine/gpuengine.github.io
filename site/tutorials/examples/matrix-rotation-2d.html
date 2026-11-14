@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lesson" content="/site/tutorials/camera-matrices/">
+<title>WebGPU example: Rotation matrix</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0f12; color: #e6e8eb; font-family: system-ui, sans-serif; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .message { padding: 1.5rem; }
+</style>
+</head>
+<body>
+<canvas></canvas>
+<script type="module">
+const adapter = await navigator.gpu?.requestAdapter();
+if (!adapter) {
+  document.body.innerHTML = '<p class="message">This example needs a browser with WebGPU.</p>';
+  throw new Error("WebGPU is not available");
+}
+const device = await adapter.requestDevice();
+const canvas = document.querySelector("canvas");
+canvas.width = canvas.clientWidth * devicePixelRatio;
+canvas.height = canvas.clientHeight * devicePixelRatio;
+const context = canvas.getContext("webgpu");
+const format = navigator.gpu.getPreferredCanvasFormat();
+context.configure({ device, format });
+
+const MILLISECONDS_PER_SECOND = 1000;
+
+function rotationZ(angle) {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  return new Float32Array([
+    cosine, sine, 0, 0,
+    -sine, cosine, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1
+  ]);
+}
+
+function scaling(x, y, z) {
+  return new Float32Array([
+    x, 0, 0, 0,
+    0, y, 0, 0,
+    0, 0, z, 0,
+    0, 0, 0, 1
+  ]);
+}
+
+function multiply(a, b) {
+  const result = new Float32Array(16);
+  for (let column = 0; column < 4; column++) {
+    for (let row = 0; row < 4; row++) {
+      let sum = 0;
+      for (let k = 0; k < 4; k++) {
+        sum += a[k * 4 + row] * b[column * 4 + k];
+      }
+      result[column * 4 + row] = sum;
+    }
+  }
+  return result;
+}
+
+const shaderModule = device.createShaderModule({
+  code: `
+    @group(0) @binding(0) var<uniform> transform: mat4x4f;
+
+    struct VertexOutput {
+      @builtin(position) position: vec4f,
+      @location(0) color: vec3f,
+    }
+
+    @vertex
+    fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+      let corners = array(
+        vec2f(-0.5, -0.5), vec2f( 0.5, -0.5), vec2f( 0.5,  0.5),
+        vec2f(-0.5, -0.5), vec2f( 0.5,  0.5), vec2f(-0.5,  0.5)
+      );
+      let corner = corners[vertexIndex];
+      var output: VertexOutput;
+      output.position = transform * vec4f(corner, 0.0, 1.0);
+      output.color = vec3f(corner + 0.5, 0.8);
+      return output;
+    }
+
+    @fragment
+    fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+      return vec4f(input.color, 1.0);
+    }
+  `
+});
+
+const pipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module: shaderModule, entryPoint: "vertexMain" },
+  fragment: { module: shaderModule, entryPoint: "fragmentMain", targets: [{ format }] }
+});
+
+const uniformBuffer = device.createBuffer({
+  size: 16 * Float32Array.BYTES_PER_ELEMENT,
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+});
+
+const bindGroup = device.createBindGroup({
+  layout: pipeline.getBindGroupLayout(0),
+  entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
+});
+
+function render(timeInMilliseconds) {
+  const angle = timeInMilliseconds / MILLISECONDS_PER_SECOND;
+  const aspect = canvas.width / canvas.height;
+  const transform = multiply(scaling(1 / aspect, 1, 1), rotationZ(angle));
+  device.queue.writeBuffer(uniformBuffer, 0, transform);
+
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: context.getCurrentTexture().createView(),
+      clearValue: { r: 0.05, g: 0.06, b: 0.07, a: 1 },
+      loadOp: "clear",
+      storeOp: "store"
+    }]
+  });
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, bindGroup);
+  pass.draw(6);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+
+  requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lesson" content="/site/tutorials/wgsl-basics/">
+<title>WebGPU example: Structs and per-vertex colours</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0f12; color: #e6e8eb; font-family: system-ui, sans-serif; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .message { padding: 1.5rem; }
+</style>
+</head>
+<body>
+<canvas></canvas>
+<script type="module">
+const adapter = await navigator.gpu?.requestAdapter();
+if (!adapter) {
+  document.body.innerHTML = '<p class="message">This example needs a browser with WebGPU.</p>';
+  throw new Error("WebGPU is not available");
+}
+const device = await adapter.requestDevice();
+const canvas = document.querySelector("canvas");
+canvas.width = canvas.clientWidth * devicePixelRatio;
+canvas.height = canvas.clientHeight * devicePixelRatio;
+const context = canvas.getContext("webgpu");
+const format = navigator.gpu.getPreferredCanvasFormat();
+context.configure({ device, format });
+
+const shaderModule = device.createShaderModule({
+  code: `
+    struct VertexOutput {
+      @builtin(position) position: vec4f,
+      @location(0) color: vec3f,
+    }
+
+    @vertex
+    fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+      let corners = array(
+        vec2f( 0.0,  0.7),
+        vec2f(-0.7, -0.6),
+        vec2f( 0.7, -0.6)
+      );
+      let colors = array(
+        vec3f(1.0, 0.3, 0.3),
+        vec3f(0.3, 1.0, 0.4),
+        vec3f(0.3, 0.5, 1.0)
+      );
+      var output: VertexOutput;
+      output.position = vec4f(corners[vertexIndex], 0.0, 1.0);
+      output.color = colors[vertexIndex];
+      return output;
+    }
+
+    @fragment
+    fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+      return vec4f(input.color, 1.0);
+    }
+  `
+});
+
+const pipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module: shaderModule, entryPoint: "vertexMain" },
+  fragment: { module: shaderModule, entryPoint: "fragmentMain", targets: [{ format }] }
+});
+
+const encoder = device.createCommandEncoder();
+const pass = encoder.beginRenderPass({
+  colorAttachments: [{
+    view: context.getCurrentTexture().createView(),
+    clearValue: { r: 0, g: 0, b: 0, a: 1 },
+    loadOp: "clear",
+    storeOp: "store"
+  }]
+});
+pass.setPipeline(pipeline);
+pass.draw(3);
+pass.end();
+device.queue.submit([encoder.finish()]);
+</script>
+</body>
+</html>

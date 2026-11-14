@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://gpuengine.github.io/site/articles/sun-shadows/">
+<meta property="og:url" content="https://gpuengine.github.io/site/articles/sun-shadows/">
+<meta property="og:site_name" content="gpuengine">
+<meta property="og:image" content="https://gpuengine.github.io/site/media/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<script src="/site/site.js" defer></script>
+<script src="/site/code-highlight.js" defer></script>
+
+<title>Sun Shadows, Explained | gpuengine Articles</title>
+<meta name="description" content="How City Drive casts sun shadows across an endless WebGPU city: one 2048 shadow map that follows the camera, texel snapping, lazy refresh, PCF and bias.">
+<meta property="og:title" content="Sun Shadows, Explained">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2026-10-28">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Sun Shadows, Explained",
+    "description": "How City Drive renders sun shadows for an endless streamed city with a single camera-following WebGPU shadow map.",
+    "datePublished": "2026-10-28",
+    "author": { "@type": "Person", "name": "Abhishek Sengar" },
+    "publisher": { "@type": "Organization", "name": "gpuengine", "url": "https://gpuengine.github.io/" },
+    "url": "https://gpuengine.github.io/site/articles/sun-shadows/",
+    "image": "https://gpuengine.github.io/site/media/articles/sun-shadows-morning.jpg"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Articles", "item": "https://gpuengine.github.io/site/articles/" },
+      { "@type": "ListItem", "position": 2, "name": "Sun shadows, explained", "item": "https://gpuengine.github.io/site/articles/sun-shadows/" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/site/tutorials/" data-nav-section>Tutorials</a>
+    <a href="/site/articles/" aria-current="true" data-nav-section>Articles</a>
+    <a href="/site/games/" data-nav-section>Games</a>
+    <a href="/site/tools/" data-nav-section>Tools</a>
+    <a class="site-nav-cta" href="/site/wgpu3d/" data-nav-section>wgpu3d</a>
+    <a class="site-nav-about" href="/site/about/" data-nav-section><svg class="site-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.42 0-8 2.24-8 5v2h16v-2c0-2.76-3.58-5-8-5Z"/></svg>About</a>
+  </nav>
+</header>
+
+<main id="main">
+  <article class="article">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/articles/">Articles</a> / City Drive</nav>
+    <h1>Sun shadows, explained</h1>
+    <p class="article-meta"><time datetime="2026-10-28">28 October 2026</time><span>13 min read</span><span>Rendering · Shadows · WGSL</span></p>
+
+    <p class="article-lead">The city in <a href="/site/games/city-drive/">City Drive</a> never ends, but its sun shadows come from one square depth texture. This article walks through <code>sun_shadows.js</code> and the shaders that read it: how the shadow camera follows you, why its position snaps to a grid, why it is not redrawn every frame, and how the game keeps shadows from speckling or floating.</p>
+
+    <nav class="article-toc" aria-label="Contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#one-map">One shadow map for an endless city</a></li>
+        <li><a href="#follow">Following the camera</a></li>
+        <li><a href="#shimmer">Snapping to texels to stop the shimmer</a></li>
+        <li><a href="#schedule">Not redrawing it every frame</a></li>
+        <li><a href="#pass">The shadow pass</a></li>
+        <li><a href="#sampling">Reading the map: four taps</a></li>
+        <li><a href="#bias">Acne, and the three biases</a></li>
+        <li><a href="#sun">Where the sun comes from</a></li>
+        <li><a href="#cost">What it costs</a></li>
+        <li><a href="#limits">Trade-offs and limitations</a></li>
+      </ol>
+    </nav>
+
+    <figure class="article-figure">
+      <img src="/site/media/articles/sun-shadows-morning.jpg" alt="Aerial view of a City Drive suburb in the morning biome, with long shadows from houses, trees and a gate arch falling across lawns and the road" width="1600" height="900" loading="lazy">
+      <figcaption>The "Crisp Morning" biome from above. The sun is about 15° high, so houses, trees and the gate arch throw long shadows across the lawns.</figcaption>
+    </figure>
+
+    <h2 id="one-map">One shadow map for an endless city</h2>
+    <p>Shadow mapping renders the scene's depth from the light, then, while shading the camera view, checks whether something in that depth image is closer to the sun than each pixel. The sun's rays are parallel, so its "camera" is orthographic: a box, not a pyramid.</p>
+    <p>City Drive's world is streamed around the car without end, and a box covering all of it would spread its texels so thin that every shadow became a blur. Many engines use cascades: several boxes of growing size. City Drive uses one box, kept small and moved with the player:</p>
+<pre><code data-language="js">const SHADOW_MAP_FORMAT = "depth32float";
+const SHADOW_HALF_EXTENT_METERS = 90;
+const SHADOW_CENTER_AHEAD_METERS = 50;
+const SHADOW_DEPTH_RANGE_METERS = 700;
+const SHADOW_MIN_SUN_HEIGHT = 0.05;
+const SHADOW_NORMAL_OFFSET_TEXELS = 1.5;
+const SHADOW_STRENGTH = 0.92;
+const SHADOW_DEPTH_BIAS_UNITS = 2;
+const SHADOW_SLOPE_BIAS = 2.5;
+const SHADOW_SUN_CHANGE_COSINE = 0.99995;</code></pre>
+    <p>So the box is 180 metres across and 700 metres deep along the sun's rays. With the default 2048 × 2048 map, one texel covers 180 / 2048 ≈ 8.8 cm. That is fine enough for cars, trees and small houses to cast crisp shadows.</p>
+
+    <figure class="article-figure">
+      <img src="/site/media/articles/sun-shadows-off.jpg" alt="The same aerial suburb view with sun shadows switched off: houses and trees stand on evenly lit lawns" width="1600" height="900" loading="lazy">
+      <figcaption>The same frame with the shadow lookup forced off for this figure only. Nothing looks grounded any more.</figcaption>
+    </figure>
+
+    <h2 id="follow">Following the camera</h2>
+    <p>The box does not sit on the car. It sits on a point 50 metres ahead of the camera, measured along the camera's horizontal view direction. Most of what you can see in a chase view is in front of you, so centring the box ahead spends texels where you are looking instead of on the road behind.</p>
+<pre><code data-language="js">function shadowFocusPoint(camera) {
+  const lookX = camera.lookX - camera.x;
+  const lookZ = camera.lookZ - camera.z;
+  const lookLength = Math.hypot(lookX, lookZ) || 1;
+  return [
+    camera.x + (lookX / lookLength) * SHADOW_CENTER_AHEAD_METERS,
+    camera.y,
+    camera.z + (lookZ / lookLength) * SHADOW_CENTER_AHEAD_METERS
+  ];
+}</code></pre>
+    <p>With a half-width of 90 metres, the box always reaches at least 40 metres behind the camera and 140 metres ahead of it, and further along the direction of the light. The focus point is used for one thing only: building the sun's view-projection matrix.</p>
+<pre><code data-language="js">function writeSunShadowMatrix(uniforms, { focus, towardSun, mapSize }) {
+  const isSunUp = towardSun[1] > SHADOW_MIN_SUN_HEIGHT;
+  const texelMeters = (SHADOW_HALF_EXTENT_METERS * 2) / mapSize;
+  const viewUp = Math.abs(towardSun[1]) > 0.95 ? [0, 0, 1] : [0, 1, 0];
+  mat4LookAt(sunShadowMatrices.rotation, [0, 0, 0], [-towardSun[0], -towardSun[1], -towardSun[2]], viewUp);
+
+  const lightSpaceCenter = transformPoint4(sunShadowMatrices.rotation, focus);
+  const snappedX = Math.round(lightSpaceCenter[0] / texelMeters) * texelMeters;
+  const snappedY = Math.round(lightSpaceCenter[1] / texelMeters) * texelMeters;
+  const centerDistance = -lightSpaceCenter[2];
+  mat4Orthographic(
+    sunShadowMatrices.projection,
+    snappedX - SHADOW_HALF_EXTENT_METERS, snappedX + SHADOW_HALF_EXTENT_METERS,
+    snappedY - SHADOW_HALF_EXTENT_METERS, snappedY + SHADOW_HALF_EXTENT_METERS,
+    centerDistance - SHADOW_DEPTH_RANGE_METERS * 0.5, centerDistance + SHADOW_DEPTH_RANGE_METERS * 0.5
+  );
+  mat4Multiply(sunShadowMatrices.viewProjection, sunShadowMatrices.projection, sunShadowMatrices.rotation);
+
+  uniforms.set(sunShadowMatrices.viewProjection, UNIFORM_VEC4_SLOT.lightViewProj * 4);
+  setUniformVec4(uniforms, UNIFORM_VEC4_SLOT.shadowParams, 1 / mapSize, isSunUp ? 1 : 0, texelMeters * SHADOW_NORMAL_OFFSET_TEXELS, SHADOW_STRENGTH);
+}</code></pre>
+    <ul>
+      <li><strong>The rotation is built at the origin.</strong> <code>mat4LookAt</code> looks from <code>[0, 0, 0]</code> along the sun's rays, with no translation. The box is positioned entirely by the orthographic bounds, which makes the snapping below simple.</li>
+      <li><strong>The depth range is centred on the focus</strong>, 350 metres either side along the ray, leaving room for tall towers between the sun and the street.</li>
+      <li><strong>Four numbers go to the shader</strong> in <code>shadowParams</code>: texel size in UV units, whether the sun is up, the normal offset in metres and the shadow strength.</li>
+    </ul>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 800 440" role="img" aria-labelledby="shadow-box-svg-title" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">
+        <title id="shadow-box-svg-title">Side view of the shadow box: a 180 by 700 metre box aligned with the sun's rays, centred 50 metres ahead of the camera. Its footprint on flat ground is longer than 180 metres because the sun is low.</title>
+        <rect x="0" y="260" width="800" height="180" fill="currentColor" fill-opacity="0.06"/>
+        <line x1="0" y1="260" x2="800" y2="260" stroke="currentColor" stroke-opacity="0.5" stroke-width="2"/>
+        <g transform="translate(440 258) rotate(30)">
+          <rect x="-300" y="-77" width="600" height="154" fill="currentColor" fill-opacity="0.07" stroke="currentColor" stroke-opacity="0.6" stroke-width="1.5" stroke-dasharray="6 5"/>
+          <line x1="-300" y1="-40" x2="73" y2="-40" stroke="currentColor" stroke-opacity="0.35"/>
+          <line x1="-300" y1="0" x2="4" y2="0" stroke="currentColor" stroke-opacity="0.35"/>
+          <line x1="-300" y1="40" x2="-65" y2="40" stroke="currentColor" stroke-opacity="0.35"/>
+          <text x="60" y="-86" fill="currentColor">700 m along the rays</text>
+        </g>
+        <circle cx="112" cy="68" r="20" style="fill: var(--accent)"/>
+        <text x="60" y="30" fill="currentColor">sun (direction only)</text>
+        <line x1="141" y1="175" x2="219" y2="41" stroke="currentColor" stroke-width="1.5"/>
+        <text x="228" y="44" fill="currentColor">180 m</text>
+        <line x1="286" y1="260" x2="594" y2="260" stroke-width="5" style="stroke: var(--accent)"/>
+        <path d="M391 260 l6 -10 l6 10 z" fill="currentColor"/>
+        <rect x="402" y="252" width="12" height="7" rx="2" style="fill: var(--accent)"/>
+        <circle cx="440" cy="258" r="4" fill="currentColor"/>
+        <line x1="300" y1="284" x2="394" y2="263" stroke="currentColor" stroke-opacity="0.6"/>
+        <text x="236" y="289" fill="currentColor" font-size="12">camera</text>
+        <line x1="441" y1="252" x2="484" y2="150" stroke="currentColor" stroke-opacity="0.6"/>
+        <text x="488" y="146" fill="currentColor" font-size="12">focus: 50 m ahead of the camera</text>
+        <text x="20" y="340" fill="currentColor">covered ground: 180 m ÷ sin(sun height)</text>
+        <text x="20" y="360" fill="currentColor" fill-opacity="0.7">= 360 m for a sun 30° high, as drawn</text>
+        <text x="20" y="420" fill="currentColor" fill-opacity="0.6" font-size="12">Roughly to scale. Below ground the box is empty.</text>
+      </svg>
+      <figcaption>The shadow box seen from the side. It is aligned with the sun, not with the road, so on flat ground it covers a strip that gets longer as the sun gets lower.</figcaption>
+    </figure>
+
+    <h2 id="shimmer">Snapping to texels to stop the shimmer</h2>
+    <p>If the box slid smoothly with the camera, the texel grid would slide with it, every shadow edge would be resampled at slightly different positions on each redraw, and edges would crawl as you drove. This shimmering is very visible on long straight edges such as a building's shadow across a road.</p>
+    <p>The fix is two lines: the focus point is transformed into light space and its x and y are rounded to whole texels (<code>snappedX</code> and <code>snappedY</code>). The box still follows you, but in steps of exactly one texel, so a building's edge falls on the same texels from one redraw to the next.</p>
+    <p>This works because the box never changes size and never rotates with the camera; its rotation depends on the sun alone. Depth is not snapped, because moving the near and far planes changes stored values but not which texel an edge lands on.</p>
+
+    <h2 id="schedule">Not redrawing it every frame</h2>
+    <p>Rendering the whole streamed world a second time from the sun is expensive, so <code>updateSunShadow</code> only asks for a new shadow map when the old one is stale:</p>
+<pre><code data-language="js">function isSunShadowStale(focus, towardSun, quality) {
+  const { focusAtRender, sunAtRender, framesSinceRender, mapSizeAtRender } = sunShadowSchedule;
+  if (!focusAtRender || mapSizeAtRender !== quality.shadowMapSize) return true;
+  if (framesSinceRender >= quality.shadowMaxFramesBetweenRenders) return true;
+  const focusMovement = Math.hypot(focus[0] - focusAtRender[0], focus[1] - focusAtRender[1], focus[2] - focusAtRender[2]);
+  if (focusMovement > quality.shadowRefreshMovementMeters) return true;
+  const sunAlignment = towardSun[0] * sunAtRender[0] + towardSun[1] * sunAtRender[1] + towardSun[2] * sunAtRender[2];
+  return sunAlignment &lt; SHADOW_SUN_CHANGE_COSINE;
+}</code></pre>
+    <p>The map is redrawn when the focus has moved far enough, when the sun has turned by more than about 0.57° (the angle whose cosine is 0.99995), or after a number of frames. The frame limit matters even when parked, because traffic and swaying trees cast shadows too.</p>
+    <p>The matrix and the map are updated together: when the map is not stale, the uniform buffer keeps the matrix the old map was rendered with. The lookup stays consistent; the shadows are just a few frames old.</p>
+    <p>The numbers come from the two render quality profiles in <code>renderer.js</code>. "Cool" is the low-power mode you get with the K key.</p>
+    <table class="reference-table">
+      <thead><tr><th>Setting</th><th>Full</th><th>Cool</th></tr></thead>
+      <tbody>
+        <tr><td><code>shadowMapSize</code></td><td>2048</td><td>1024</td></tr>
+        <tr><td>Texel size on the ground (sun overhead)</td><td>8.8 cm</td><td>17.6 cm</td></tr>
+        <tr><td><code>shadowMaxFramesBetweenRenders</code></td><td>6</td><td>10</td></tr>
+        <tr><td><code>shadowRefreshMovementMeters</code></td><td>1.5</td><td>2.5</td></tr>
+        <tr><td><code>treeShadowMaxLod</code></td><td>1</td><td>0</td></tr>
+        <tr><td>Depth texture memory</td><td>16 MiB</td><td>4 MiB</td></tr>
+      </tbody>
+    </table>
+    <p>At 22 m/s (79 km/h, the speed the car starts at) and 60 frames per second, the focus moves about 0.37 metres a frame, so the full profile redraws the map roughly every fourth frame. Parked, it redraws every sixth.</p>
+
+    <h2 id="pass">The shadow pass</h2>
+    <p>When the map is stale, the renderer records an extra depth-only render pass at the start of the frame's command encoder, before the depth prepass and the main scene:</p>
+<pre><code data-language="js">encodeShadowPass(encoder, { dynamicMesh, slotOrder, treeBatches }) {
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [],
+    depthStencilAttachment: { view: this.sunShadowMap.view, depthClearValue: 1.0, depthLoadOp: "clear", depthStoreOp: "store" }
+  });
+  this.drawWorldMeshes(pass, { dynamicMesh, slotOrder, pipeline: this.shadowPipelines.mesh, bindGroup: this.shadowBindGroup });
+  const nearbyTreeBatches = treeBatches.filter(batch => batch.lod &lt;= this.quality.treeShadowMaxLod);
+  this.drawTreeBatches(pass, nearbyTreeBatches, this.shadowPipelines.tree, this.shadowBindGroup);
+  pass.end();
+}</code></pre>
+    <p>It reuses the main pass's vertex buffers and draw loop: one draw per streamed road segment slot, plus the dynamic mesh with the player's car, traffic and pedestrians. Nothing is culled against the shadow box; the GPU clips what falls outside. Only trees are filtered: batches whose level of detail index is at most 1 (0 in the cool profile).</p>
+    <p>The map is a <code>depth32float</code> texture with <code>RENDER_ATTACHMENT</code> and <code>TEXTURE_BINDING</code> usage, written here and sampled later in the same frame. The mesh pipeline has no fragment shader. Its vertex shader throws away small detail geometry and road markings by moving them outside the clip volume:</p>
+<pre><code data-language="wgsl">@vertex
+fn vs_mesh_shadow(in : MeshIn) -> @builtin(position) vec4&lt;f32> {
+  return select(u.lightViewProj * vec4&lt;f32>(in.pos, 1.0), CULLED_CLIP_POSITION, isDistanceFadingMaterial(in.mat.x));
+}</code></pre>
+    <p><code>CULLED_CLIP_POSITION</code> is <code>vec4(0, 0, 2, 1)</code>, a depth that is always clipped. Leaves do need a fragment shader, because a leaf card is a quad with a transparent texture; it discards the empty parts so shadows get leaf-shaped holes:</p>
+<pre><code data-language="wgsl">@fragment
+fn fs_tree_shadow(in : TreeShadowVertexOut) {
+  let leafCoverage = textureSampleLevel(leafAtlasTex, leafAtlasSampler, in.atlasUV, 0.0).a;
+  if (in.kind &lt; 0.25 &amp;&amp; leafCoverage &lt; 0.5) {
+    discard;
+  }
+}</code></pre>
+    <p>For the shadow pass, leaf cards are turned to face the sun rather than the camera, so a crown casts a full shadow instead of a thin sliver.</p>
+
+    <h2 id="sampling">Reading the map: four taps</h2>
+    <p>Every lit fragment of the world calls <code>sunShadowVisibility</code> in <code>world_shaders.js</code>, which returns 1 for full sun and lower values in shadow:</p>
+<pre><code data-language="wgsl">fn sunShadowVisibility(worldPos : vec3&lt;f32>, normal : vec3&lt;f32>) -> f32 {
+  if (u.shadowParams.y &lt; 0.5) {
+    return 1.0;
+  }
+  let lightClip = u.lightViewProj * vec4&lt;f32>(worldPos + normal * u.shadowParams.z, 1.0);
+  let shadowUV = vec2&lt;f32>(lightClip.x * 0.5 + 0.5, 0.5 - lightClip.y * 0.5);
+  let receiverDepth = lightClip.z - SHADOW_DEPTH_BIAS;
+  let texel = u.shadowParams.x;
+  var litSamples = 0.0;
+  for (var tapY = 0; tapY &lt; 2; tapY++) {
+    for (var tapX = 0; tapX &lt; 2; tapX++) {
+      let tapOffset = (vec2&lt;f32>(f32(tapX), f32(tapY)) * 2.0 - 1.0) * texel;
+      litSamples += textureSampleCompareLevel(sunShadowMap, sunShadowSampler, shadowUV + tapOffset, receiverDepth);
+    }
+  }
+  let distanceToEdge = min(min(shadowUV.x, 1.0 - shadowUV.x), min(shadowUV.y, 1.0 - shadowUV.y));
+  let insideMap = smoothstep(0.0, SHADOW_EDGE_FADE_UV, distanceToEdge) * step(receiverDepth, 1.0);
+  let visibility = mix(SHADOW_DARKEST_VISIBILITY, 1.0, litSamples / 4.0);
+  return mix(1.0, visibility, insideMap * u.shadowParams.w);
+}</code></pre>
+    <ul>
+      <li><strong>Project.</strong> Clip x and y become texture coordinates, with y flipped. The projection is orthographic, so there is no divide.</li>
+      <li><strong>Compare in hardware.</strong> The map is bound as <code>texture_depth_2d</code> with a <code>sampler_comparison</code> using <code>compare: "less-equal"</code> and linear filtering. Each <code>textureSampleCompareLevel</code> compares against the four nearest texels and blends the results bilinearly: percentage-closer filtering (PCF) done by the texture unit.</li>
+      <li><strong>Four taps, one texel apart.</strong> Each tap covers 2 × 2 texels, so the four diagonal taps read a 4 × 4 neighbourhood. Edges come out about three texels soft, roughly 25 cm at full quality.</li>
+      <li><strong>Fade at the edges.</strong> Within 6% of the border, about 11 metres in the light's view, shadows fade out instead of ending in a hard line. Beyond the far plane counts as lit.</li>
+      <li><strong>Strength.</strong> The final mix with <code>shadowParams.w</code> (0.92) means full shadow still keeps 8% of the direct sunlight.</li>
+    </ul>
+    <p>Visibility only scales the direct sun term; ambient light and the contact shading in <code>post_processing.js</code> are separate, so shadows are dark but never black. Water uses it to switch off sun glints, and foliage uses <code>mix(0.22, 1.0, visibility)</code> so shadowed leaves never go flat.</p>
+
+    <figure class="article-figure">
+      <img src="/site/media/articles/sun-shadows-street.jpg" alt="Chase camera view down a city street at noon: a building's shadow covers the left of the road while the pavement on the right is in sunlight" width="1600" height="900" loading="lazy">
+      <figcaption>Street level in the "Sunny Noon" biome. The building shadow's edge across the right-hand pavement is softened by the four-tap filter. The dark rectangle under the car is a separate painted contact shadow, not the shadow map.</figcaption>
+    </figure>
+
+    <h2 id="bias">Acne, and the three biases</h2>
+    <p>Comparing a surface against its own depth is a coin toss: rounding and texel size make parts of a lit surface think they are behind themselves, giving shadow acne, dark stripes over lit surfaces. Overcorrect and shadows detach from their casters ("peter-panning"). City Drive combines three small corrections:</p>
+    <table class="reference-table">
+      <thead><tr><th>Bias</th><th>Where</th><th>Value</th><th>What it handles</th></tr></thead>
+      <tbody>
+        <tr><td>Rasteriser depth bias</td><td>Shadow pipeline <code>depthStencil</code></td><td><code>depthBias: 2</code>, <code>depthBiasSlopeScale: 2.5</code></td><td>Pushes stored depth away from the sun, more on surfaces at a steep angle to the light</td></tr>
+        <tr><td>Normal offset</td><td><code>sunShadowVisibility</code></td><td>1.5 texels: 13 cm at full quality, 26 cm in cool</td><td>Moves the lookup point off the surface along its normal, so it lands in front of its own texel</td></tr>
+        <tr><td>Receiver depth bias</td><td><code>SHADOW_DEPTH_BIAS</code></td><td>0.0006 of the depth range, about 42 cm</td><td>A final constant margin on the comparison</td></tr>
+      </tbody>
+    </table>
+    <p>The normal offset follows the texel size, so it grows in the cool profile where acne would otherwise get worse. The slope-scaled bias handles walls and roofs lit at a grazing angle, exactly where a constant bias fails.</p>
+    <p>Leaves have no meaningful normal, so the foliage shader also moves the lookup 0.6 metres towards the sun: <code>sunShadowVisibility(in.worldPos + L * select(0.0, FOLIAGE_SHADOW_LIGHTWARD_OFFSET_METERS, kind &lt; 0.75), N)</code>. Without it, a crown would shadow itself almost completely.</p>
+    <p>The price of this margin is that thin contact shadows can start a little away from their caster. The painted dark quads under the cars and the contact shading pass fill that gap.</p>
+
+    <h2 id="sun">Where the sun comes from</h2>
+    <p>Each of the six biomes in <code>environment.js</code> has its own <code>sunDir</code>. The game blends between biomes over time, or jumps when you press B. The blend is a component-wise lerp, so <code>updateSunShadow</code> renormalises the direction, and the 0.57° threshold triggers redraws as it moves.</p>
+    <p>A sun height (the y component) below 0.05 switches the lookup off. Every biome is above that, including "Starry Night", whose dim, bluish "sun" stands in for moonlight.</p>
+    <p>Because the box is square to the sun, not the ground, a texel on flat ground stretches to 8.8 cm divided by the sine of the sun's elevation, along the light's direction. At full quality:</p>
+    <table class="reference-table">
+      <thead><tr><th>Biome</th><th>Sun elevation</th><th>Shadow of a 10 m house</th><th>Ground covered along the light</th><th>Texel length along the light</th></tr></thead>
+      <tbody>
+        <tr><td>Sunny Noon</td><td>35.6°</td><td>14 m</td><td>309 m</td><td>15 cm</td></tr>
+        <tr><td>Crisp Morning</td><td>15.1°</td><td>37 m</td><td>693 m</td><td>34 cm</td></tr>
+        <tr><td>Golden Sunset</td><td>9.2°</td><td>62 m</td><td>about 709 m (limited by the 700 m depth range)</td><td>55 cm</td></tr>
+      </tbody>
+    </table>
+    <p>These are derived from the biome constants, not measured. They explain why morning and sunset shadows are long but softer and blockier than noon shadows.</p>
+
+    <figure class="article-figure">
+      <img src="/site/media/articles/sun-shadows-noon.jpg" alt="The same suburb seen from above in the noon biome, with shorter, darker-edged shadows close to each house and tree" width="1600" height="900" loading="lazy">
+      <figcaption>The same spot in "Sunny Noon". The sun is higher, so shadows are shorter and their edges tighter than in the morning view at the top of the page.</figcaption>
+    </figure>
+
+    <h2 id="cost">What it costs</h2>
+    <p>I have not timed the shadow pass on the GPU, so these are costs read from the code:</p>
+    <ul>
+      <li><strong>Memory:</strong> 16 MiB for the 2048 map, 4 MiB for 1024. Switching profile destroys the old texture and rebuilds the bind group.</li>
+      <li><strong>Vertex work:</strong> each redraw draws every streamed segment slot again (up to 180 slots of up to 7,200 vertices), plus the dynamic mesh and nearby trees, about one frame in four while driving.</li>
+      <li><strong>Fragment work:</strong> depth only in the shadow pass; four comparison samples per lit fragment in the main pass.</li>
+      <li><strong>CPU work:</strong> a little vector maths per frame, and a matrix rebuild only when the map is stale.</li>
+    </ul>
+    <p>The redraw schedule is the main lever, and it is safe because the box moves in texel steps and the matrix changes only with the map.</p>
+
+    <section class="article-takeaways" aria-labelledby="takeaways-heading">
+      <h2 id="takeaways-heading">Key takeaways</h2>
+      <ul>
+        <li>An endless world can use one small shadow map if the map follows the camera. City Drive uses a 180 m box centred 50 m ahead of the camera.</li>
+        <li>Build the light rotation at the origin and position the box with the projection bounds. Then snapping the bounds to whole texels removes shimmering.</li>
+        <li>Shadows do not need redrawing every frame. Redraw on movement, sun change or a frame limit, and update the matrix only when the map is redrawn.</li>
+        <li>A linear comparison sampler gives 2 × 2 PCF per tap for free. Four offset taps give a soft 4 × 4 footprint.</li>
+        <li>Combine small biases: slope-scaled raster bias, a normal offset tied to texel size and a small constant.</li>
+        <li>A low sun stretches every texel across the ground. Long morning shadows are softer for a reason.</li>
+      </ul>
+    </section>
+
+    <h2 id="limits">Trade-offs and limitations</h2>
+    <p>One box means one resolution. There is no fine cascade for the car's own surroundings and no coarse cascade for the skyline, so outside the box, which is 180 metres wide across the light and reaches at least 140 metres ahead, nothing casts a sun shadow at all. The edge fade softens the boundary, and from a chase camera most of what you look at is inside the box, but distant towers simply have no sun shadows.</p>
+    <p>Moving objects update at the map's pace: traffic and swaying tree shadows advance every few frames. And low suns are the weak spot, because texels and the three-texel filter stretch across the ground exactly when shadows are longest. Cascades, or a box that adapts to the sun's height, would fix that at the cost of more passes.</p>
+    <p>All of these trade-offs are a handful of constants at the top of <code>sun_shadows.js</code> and two quality profiles. If you want to build the basic technique yourself first, the <a href="/site/tutorials/shadow-mapping/">shadow mapping tutorial</a> walks through it step by step; after that, <code>sun_shadows.js</code> is a short read at 132 lines.</p>
+
+    <h2 id="official-docs">Official documentation</h2>
+<p class="official-links-lead">Go deeper with the specifications and reference documentation:</p>
+<ul class="cards official-cards"><li><a class="card" href="https://www.w3.org/TR/webgpu/#dom-gpusamplerdescriptor-compare" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WebGPU specification: sampler compare</h3><p>Comparison samplers used for shadow lookups.</p></a></li><li><a class="card" href="https://www.w3.org/TR/WGSL/#texturesamplecompare" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WGSL specification: textureSampleCompare</h3><p>The shadow map comparison built-in.</p></a></li><li><a class="card" href="https://www.w3.org/TR/webgpu/#depth-formats" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WebGPU specification: depth formats</h3><p>Depth texture formats for shadow maps.</p></a></li></ul>
+
+    <nav class="article-pager" aria-label="More articles">
+      <a href="/site/articles/traffic-simulation/" rel="prev"><small>Previous article</small>Traffic simulation on a road graph</a>
+      <a href="/site/articles/webgpu-vs-webgl/" rel="next"><small>Next article</small>WebGPU vs WebGL: real numbers</a>
+    </nav>
+  </article>
+</main>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="/site/tutorials/">Tutorials</a>
+      <a href="/site/articles/">Articles</a>
+      <a href="/site/games/">Games</a>
+      <a href="/site/tools/">Tools</a>
+      <a href="/site/wgpu3d/">wgpu3d</a>
+      <a href="/site/resources/">WebGPU resources</a>
+      <a href="/site/about/">About</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </nav>
+    <p class="footer-note">WebGPU games, tools and tutorials, with notes on how they're made.</p>
+  </div>
+</footer>
+
+</body>
+</html>

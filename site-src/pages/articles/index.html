@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>WebGPU Articles and Engine Deep Dives | gpuengine</title>
+<meta name="description" content="Long-form WebGPU articles and wgpu3d tutorials: procedural cities, open-world streaming with Web Workers, car physics, traffic simulation, sun shadows, WebGPU vs WebGL benchmarks and GPU text search.">
+<meta property="og:title" content="WebGPU Articles and Engine Deep Dives">
+<meta property="og:type" content="website">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Blog",
+  "name": "gpuengine articles",
+  "url": "{{canonical}}",
+  "author": { "@type": "Person", "name": "Abhishek Sengar" },
+  "blogPost": [
+    { "@type": "BlogPosting", "headline": "Build a procedural village with wgpu3d", "datePublished": "2026-11-08", "url": "{{origin}}/site/wgpu3d/procedural-village/" },
+    { "@type": "BlogPosting", "headline": "A tiny platform game with wgpu3d", "datePublished": "2026-11-08", "url": "{{origin}}/site/wgpu3d/collect-the-coins/" },
+    { "@type": "BlogPosting", "headline": "Make a drivable car with wgpu3d", "datePublished": "2026-11-08", "url": "{{origin}}/site/wgpu3d/drive-a-car/" },
+    { "@type": "BlogPosting", "headline": "Your first wgpu3d scene", "datePublished": "2026-11-08", "url": "{{origin}}/site/wgpu3d/getting-started/" },
+    { "@type": "BlogPosting", "headline": "Searching text with a compute shader", "datePublished": "2026-11-07", "url": "{{origin}}/site/articles/gpu-text-search/" },
+    { "@type": "BlogPosting", "headline": "WebGPU vs WebGL: real numbers", "datePublished": "2026-11-02", "url": "{{origin}}/site/articles/webgpu-vs-webgl/" },
+    { "@type": "BlogPosting", "headline": "Sun shadows, explained", "datePublished": "2026-10-28", "url": "{{origin}}/site/articles/sun-shadows/" },
+    { "@type": "BlogPosting", "headline": "Traffic simulation on a road graph", "datePublished": "2026-10-23", "url": "{{origin}}/site/articles/traffic-simulation/" },
+    { "@type": "BlogPosting", "headline": "Car physics without a physics engine", "datePublished": "2026-10-18", "url": "{{origin}}/site/articles/car-physics/" },
+    { "@type": "BlogPosting", "headline": "Streaming an open world with Web Workers", "datePublished": "2026-10-13", "url": "{{origin}}/site/articles/streaming-world/" },
+    { "@type": "BlogPosting", "headline": "Building a procedural city in WebGPU", "datePublished": "2026-10-08", "url": "{{origin}}/site/articles/procedural-city/" }
+  ]
+}
+</script>
+</head>
+<body>
+{{include header.html}}
+<main id="main">
+  <header class="page-header">
+    <h1>Articles</h1>
+    <p>Deep dives into how the games and tools on this site are built: the techniques, the numbers, and what did not work the first time.</p>
+  </header>
+  <section class="section section-tight" aria-label="All articles, newest first">
+    <ul class="article-list">
+      <li><a class="article-list-item" href="/site/wgpu3d/procedural-village/"><span class="article-list-meta"><time datetime="2026-11-08">8 Nov 2026</time> · wgpu3d</span><h2>Build a procedural village with wgpu3d</h2><p>Custom meshes with MeshBuilder and a seeded generator that grows a different village every time.</p></a></li>
+      <li><a class="article-list-item" href="/site/wgpu3d/collect-the-coins/"><span class="article-list-meta"><time datetime="2026-11-08">8 Nov 2026</time> · wgpu3d</span><h2>A tiny platform game with wgpu3d</h2><p>A character that walks, runs and jumps onto crates to collect coins, with a score and a timer.</p></a></li>
+      <li><a class="article-list-item" href="/site/wgpu3d/drive-a-car/"><span class="article-list-meta"><time datetime="2026-11-08">8 Nov 2026</time> · wgpu3d</span><h2>Make a drivable car with wgpu3d</h2><p>A street at sunset and the City Drive car, with arcade handling, collisions and a chase camera.</p></a></li>
+      <li><a class="article-list-item" href="/site/wgpu3d/getting-started/"><span class="article-list-meta"><time datetime="2026-11-08">8 Nov 2026</time> · wgpu3d</span><h2>Your first wgpu3d scene</h2><p>Objects, meshes, materials, behaviors and an orbit camera in thirty lines.</p></a></li>
+      <li><a class="article-list-item" href="/site/articles/gpu-text-search/"><span class="article-list-meta"><time datetime="2026-11-07">7 Nov 2026</time> · Tools</span><h2>Searching text with a compute shader</h2><p>How the JSON viewer checks every character position on the GPU at once, and where that beats the CPU.</p></a></li>
+      <li><a class="article-list-item" href="/site/articles/webgpu-vs-webgl/"><span class="article-list-meta"><time datetime="2026-11-02">2 Nov 2026</time> · WebGPU</span><h2>WebGPU vs WebGL: real numbers</h2><p>The same scene drawn with both APIs, measured, with a benchmark you can run yourself.</p></a></li>
+      <li><a class="article-list-item" href="/site/articles/sun-shadows/"><span class="article-list-meta"><time datetime="2026-10-28">28 Oct 2026</time> · City Drive</span><h2>Sun shadows, explained</h2><p>Shadow maps for a city that never ends: following the car, filtering and fighting shadow acne.</p></a></li>
+      <li><a class="article-list-item" href="/site/articles/traffic-simulation/"><span class="article-list-meta"><time datetime="2026-10-23">23 Oct 2026</time> · City Drive</span><h2>Traffic simulation on a road graph</h2><p>Lanes, junction turns, spacing and spawning cars around the player.</p></a></li>
+      <li><a class="article-list-item" href="/site/articles/car-physics/"><span class="article-list-meta"><time datetime="2026-10-18">18 Oct 2026</time> · City Drive</span><h2>Car physics without a physics engine</h2><p>A small driving model that feels right on a keyboard and a phone.</p></a></li>
+      <li><a class="article-list-item" href="/site/articles/streaming-world/"><span class="article-list-meta"><time datetime="2026-10-13">13 Oct 2026</time> · City Drive</span><h2>Streaming an open world with Web Workers</h2><p>Building geometry off the main thread so driving never stutters.</p></a></li>
+      <li><a class="article-list-item" href="/site/articles/procedural-city/"><span class="article-list-meta"><time datetime="2026-10-08">8 Oct 2026</time> · City Drive</span><h2>Building a procedural city in WebGPU</h2><p>Districts, blocks, roads and buildings generated from a single seed.</p></a></li>
+    </ul>
+  </section>
+</main>
+{{include footer.html}}
+</body>
+</html>

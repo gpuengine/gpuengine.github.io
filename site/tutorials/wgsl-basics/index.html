@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://gpuengine.github.io/site/tutorials/wgsl-basics/">
+<meta property="og:url" content="https://gpuengine.github.io/site/tutorials/wgsl-basics/">
+<meta property="og:site_name" content="gpuengine">
+<meta property="og:image" content="https://gpuengine.github.io/site/media/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<script src="/site/site.js" defer></script>
+<script src="/site/code-highlight.js" defer></script>
+
+<title>WGSL Basics — Types, Vectors, Structs and Functions | WebGPU Tutorial</title>
+<meta name="description" content="Learn WGSL, the WebGPU Shading Language: scalar and vector types, let and var, structs, built-in functions, loops and passing data from the vertex to the fragment shader. With runnable examples.">
+<meta property="og:title" content="WGSL Basics — Types, Vectors, Structs and Functions">
+<meta property="og:type" content="article">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "WGSL Basics — Types, Vectors, Structs and Functions",
+    "description": "The WebGPU Shading Language explained with runnable examples.",
+    "proficiencyLevel": "Beginner",
+    "url": "https://gpuengine.github.io/site/tutorials/wgsl-basics/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Tutorials", "item": "https://gpuengine.github.io/site/tutorials/" },
+      { "@type": "ListItem", "position": 2, "name": "WGSL basics", "item": "https://gpuengine.github.io/site/tutorials/wgsl-basics/" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/site/tutorials/" aria-current="true" data-nav-section>Tutorials</a>
+    <a href="/site/articles/" data-nav-section>Articles</a>
+    <a href="/site/games/" data-nav-section>Games</a>
+    <a href="/site/tools/" data-nav-section>Tools</a>
+    <a class="site-nav-cta" href="/site/wgpu3d/" data-nav-section>wgpu3d</a>
+    <a class="site-nav-about" href="/site/about/" data-nav-section><svg class="site-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.42 0-8 2.24-8 5v2h16v-2c0-2.76-3.58-5-8-5Z"/></svg>About</a>
+  </nav>
+</header>
+
+<div class="doc">
+  <nav class="doc-sidebar" aria-label="Tutorials">
+  <a class="doc-sidebar-home" href="/site/tutorials/">WebGPU Tutorial Home</a>
+  <p class="doc-sidebar-heading">Getting started</p>
+  <a href="/site/tutorials/webgpu-intro/">1. What is WebGPU?</a>
+  <a href="/site/tutorials/first-triangle/">2. Your first triangle</a>
+  <a href="/site/tutorials/wgsl-basics/" aria-current="page">3. WGSL basics</a>
+  <a href="/site/tutorials/vertex-buffers/">4. Vertex buffers</a>
+  <a href="/site/tutorials/uniforms-bind-groups/">5. Uniforms &amp; bind groups</a>
+  <p class="doc-sidebar-heading">Going 3D</p>
+  <a href="/site/tutorials/camera-matrices/">6. Camera &amp; matrices</a>
+  <a href="/site/tutorials/depth-buffer/">7. Depth buffer</a>
+  <a href="/site/tutorials/textures-samplers/">8. Textures &amp; samplers</a>
+  <a href="/site/tutorials/instancing/">9. Instancing</a>
+  <p class="doc-sidebar-heading">Advanced</p>
+  <a href="/site/tutorials/compute-shaders/">10. Compute shaders</a>
+  <a href="/site/tutorials/shadow-mapping/">11. Shadow mapping</a>
+  <a href="/site/tutorials/post-processing/">12. Post-processing</a>
+  <p class="doc-sidebar-heading">Practice</p>
+  <a href="/site/tutorials/playground/?example=first-triangle" target="_blank">Playground</a>
+  <a href="/site/resources/">Official docs &amp; resources</a>
+</nav>
+
+  <main id="main">
+    <article>
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/tutorials/">Tutorials</a> / Getting started</nav>
+      <h1>WGSL <span class="lesson-title-accent">Basics</span></h1>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/first-triangle/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/vertex-buffers/" rel="next">Next ❯</a>
+      </nav>
+
+      <p class="lesson-intro"><strong>WGSL</strong> (WebGPU Shading Language) is the language for programs that run on the GPU.</p>
+      <p>It looks a bit like Rust and a bit like TypeScript. Every value has a type, and the GPU runs your code for many vertices or pixels at the same time.</p>
+
+      <figure class="example-demo">
+        <iframe src="/site/tutorials/examples/wgsl-functions.html" title="Five coloured circles drawn by a WGSL fragment shader" loading="lazy"></iframe>
+        <figcaption>Circles drawn entirely by a fragment shader function.</figcaption>
+      </figure>
+
+      <h2>WGSL Types</h2>
+      <p>WGSL has a small set of basic types:</p>
+      <table class="reference-table">
+        <thead><tr><th>Type</th><th>Description</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td><code>f32</code></td><td>32-bit floating-point number</td><td><code>1.5</code></td></tr>
+          <tr><td><code>i32</code></td><td>32-bit signed integer</td><td><code>-3</code></td></tr>
+          <tr><td><code>u32</code></td><td>32-bit unsigned integer</td><td><code>7u</code></td></tr>
+          <tr><td><code>bool</code></td><td>true or false</td><td><code>true</code></td></tr>
+          <tr><td><code>vec2f</code>, <code>vec3f</code>, <code>vec4f</code></td><td>2, 3 or 4 floats</td><td><code>vec3f(1.0, 0.5, 0.0)</code></td></tr>
+          <tr><td><code>mat4x4f</code></td><td>4×4 matrix of floats</td><td>Used for 3D transforms</td></tr>
+          <tr><td><code>array&lt;T, N&gt;</code></td><td>Fixed-size array</td><td><code>array&lt;f32, 4&gt;</code></td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-warning">
+        <strong>Warning</strong>
+        WGSL never converts types for you. <code>1.0 + 2</code> is fine because <code>2</code> is a flexible literal, but adding an <code>f32</code> variable to an <code>i32</code> variable is an error. Convert explicitly with <code>f32(value)</code>.
+      </div>
+
+      <h2>Variables: let and var</h2>
+      <p>Use <code>let</code> for values that never change, and <code>var</code> for values you will change:</p>
+<pre><code data-language="wgsl">let radius = 0.5;
+var total = 0.0;
+total = total + radius;</code></pre>
+      <p>The type is usually worked out from the value. You can also write it:</p>
+<pre><code data-language="wgsl">let count: u32 = 4u;
+var color: vec3f = vec3f(1.0, 0.0, 0.0);</code></pre>
+
+      <h2>Vectors</h2>
+      <p>Vectors are everywhere in shaders: positions, colours and directions. You can read their parts with <code>.x .y .z .w</code> or <code>.r .g .b .a</code>, and combine them freely. This is called <dfn>swizzling</dfn>.</p>
+<pre><code data-language="wgsl">let color = vec4f(1.0, 0.5, 0.2, 1.0);
+let red = color.r;
+let rgb = color.rgb;
+let flipped = color.bgr;
+let position = vec4f(rgb, 1.0);</code></pre>
+      <p>Maths works on every component at once: <code>vec2f(1.0, 2.0) * 2.0</code> is <code>vec2f(2.0, 4.0)</code>.</p>
+
+      <h2>Structs</h2>
+      <p>A <dfn>struct</dfn> groups values together. Structs are the usual way to send several values from the vertex shader to the fragment shader.</p>
+      <p>Fields marked <code>@location(n)</code> are passed along and smoothly blended across the triangle. This blending is called <dfn>interpolation</dfn>.</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Give each corner its own colour:</p>
+<pre><code data-language="wgsl">struct VertexOutput {
+  @builtin(position) position: vec4f,
+  @location(0) color: vec3f,
+}
+
+@vertex
+fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+  let corners = array(vec2f(0.0, 0.7), vec2f(-0.7, -0.6), vec2f(0.7, -0.6));
+  let colors = array(vec3f(1.0, 0.3, 0.3), vec3f(0.3, 1.0, 0.4), vec3f(0.3, 0.5, 1.0));
+  var output: VertexOutput;
+  output.position = vec4f(corners[vertexIndex], 0.0, 1.0);
+  output.color = colors[vertexIndex];
+  return output;
+}
+
+@fragment
+fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+  return vec4f(input.color, 1.0);
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=wgsl-vertex-colors" target="_blank">Edit &amp; Run »</a>
+      </div>
+
+      <h2>Built-in Values</h2>
+      <p>Values marked <code>@builtin(...)</code> come from, or go to, the GPU itself:</p>
+      <table class="reference-table">
+        <thead><tr><th>Built-in</th><th>Shader</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>vertex_index</code></td><td>Vertex (input)</td><td>Which vertex is being processed: 0, 1, 2, …</td></tr>
+          <tr><td><code>instance_index</code></td><td>Vertex (input)</td><td>Which copy is being drawn (see <a href="/site/tutorials/instancing/">Instancing</a>)</td></tr>
+          <tr><td><code>position</code></td><td>Vertex (output)</td><td>The clip-space position of the vertex</td></tr>
+          <tr><td><code>position</code></td><td>Fragment (input)</td><td>The pixel coordinate being coloured</td></tr>
+          <tr><td><code>global_invocation_id</code></td><td>Compute (input)</td><td>Which thread is running (see <a href="/site/tutorials/compute-shaders/">Compute shaders</a>)</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Built-in Functions</h2>
+      <p>WGSL comes with many maths functions. These are the ones you will use most:</p>
+      <table class="reference-table">
+        <thead><tr><th>Function</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>mix(a, b, t)</code></td><td>Blends from <code>a</code> to <code>b</code> as <code>t</code> goes from 0 to 1</td></tr>
+          <tr><td><code>clamp(x, low, high)</code></td><td>Keeps <code>x</code> between <code>low</code> and <code>high</code></td></tr>
+          <tr><td><code>smoothstep(edge0, edge1, x)</code></td><td>A smooth 0-to-1 step between two edges</td></tr>
+          <tr><td><code>length(v)</code></td><td>The length of a vector</td></tr>
+          <tr><td><code>normalize(v)</code></td><td>The same direction with length 1</td></tr>
+          <tr><td><code>dot(a, b)</code></td><td>How much two directions agree. Used for lighting.</td></tr>
+          <tr><td><code>sin(x)</code>, <code>cos(x)</code></td><td>Trigonometry, in radians</td></tr>
+          <tr><td><code>max(a, b)</code>, <code>min(a, b)</code></td><td>The larger or smaller value</td></tr>
+        </tbody>
+      </table>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Use <code>mix()</code> to make a sky gradient:</p>
+<pre><code data-language="wgsl">@fragment
+fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+  let bottomColor = vec3f(0.05, 0.1, 0.3);
+  let topColor = vec3f(0.95, 0.55, 0.3);
+  let color = mix(bottomColor, topColor, input.uv.y);
+  return vec4f(color, 1.0);
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=wgsl-gradient" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        This example draws one big triangle that covers the whole canvas, and passes a <code>uv</code> coordinate from 0 to 1 across it. This "full-screen triangle" trick is used in many effects, including <a href="/site/tutorials/post-processing/">post-processing</a>.
+      </div>
+
+      <h2>Functions</h2>
+      <p>Write your own functions with <code>fn</code>. Parameters and the return value must have types:</p>
+<pre><code data-language="wgsl">fn circle(point: vec2f, center: vec2f, radius: f32) -> f32 {
+  let distanceToCenter = length(point - center);
+  return 1.0 - smoothstep(radius - 0.01, radius + 0.01, distanceToCenter);
+}</code></pre>
+      <p>Functions marked <code>@vertex</code>, <code>@fragment</code> or <code>@compute</code> are <dfn>entry points</dfn>: the places JavaScript can start the shader from.</p>
+
+      <h2>Loops and Conditions</h2>
+      <p><code>if</code>, <code>for</code> and <code>while</code> work like in JavaScript, but conditions must be <code>bool</code> and braces are required.</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Draw five circles in a loop:</p>
+<pre><code data-language="wgsl">var color = vec3f(0.05, 0.06, 0.07);
+for (var index = 0; index &lt; 5; index++) {
+  let ordinal = f32(index);
+  let center = vec2f(aspect * 0.5 + (ordinal - 2.0) * 0.3, 0.5 + 0.2 * sin(ordinal * 1.3));
+  let shade = vec3f(0.3 + ordinal * 0.15, 0.9 - ordinal * 0.12, 0.6);
+  color = mix(color, shade, circle(point, center, 0.12));
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=wgsl-functions" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        In the full example, the canvas aspect ratio is written into the shader text with a JavaScript template string. In <a href="/site/tutorials/uniforms-bind-groups/">Lesson 5</a> you will learn the proper way to send values like this: uniforms.
+      </div>
+
+      <h2>Exercises</h2>
+      <div class="exercise">
+        <p>1. Which keyword declares a value that can change?</p>
+        <details><summary>Show answer</summary><p><code>var</code>. Values declared with <code>let</code> cannot change.</p></details>
+      </div>
+      <div class="exercise">
+        <p>2. What does <code>vec4f(0.2, 0.4, 0.6, 1.0).zyx</code> return?</p>
+        <details><summary>Show answer</summary><p><code>vec3f(0.6, 0.4, 0.2)</code></p></details>
+      </div>
+      <div class="exercise">
+        <p>3. Fix this line: <code>let half = count / 2.0;</code> where <code>count</code> is an <code>i32</code>.</p>
+        <details><summary>Show answer</summary><pre><code data-language="wgsl">let half = f32(count) / 2.0;</code></pre></details>
+      </div>
+      <div class="exercise">
+        <p>4. In the gradient example, swap the two colours so the sky is darker at the top.</p>
+        <details><summary>Show answer</summary><pre><code data-language="wgsl">let color = mix(topColor, bottomColor, input.uv.y);</code></pre></details>
+      </div>
+
+      <h2>Summary</h2>
+      <ul>
+        <li>WGSL is strictly typed: <code>f32</code>, <code>i32</code>, <code>u32</code>, <code>bool</code>, vectors and matrices.</li>
+        <li><code>let</code> is constant, <code>var</code> can change.</li>
+        <li>Structs with <code>@location</code> fields carry data from the vertex shader to the fragment shader.</li>
+        <li>Built-in functions like <code>mix</code>, <code>smoothstep</code> and <code>length</code> do most of the work.</li>
+      </ul>
+
+      <h2 id="official-docs">Official documentation</h2>
+<p class="official-links-lead">Go deeper with the specifications and reference documentation:</p>
+<ul class="cards official-cards"><li><a class="card" href="https://www.w3.org/TR/WGSL/#types" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WGSL specification: types</h3><p>Scalars, vectors, matrices, arrays and structures, defined precisely.</p></a></li><li><a class="card" href="https://www.w3.org/TR/WGSL/#functions" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WGSL specification: functions</h3><p>Function declarations, parameters, return values and entry points.</p></a></li><li><a class="card" href="https://google.github.io/tour-of-wgsl/" rel="noopener external"><span class="card-kicker">google.github.io</span><h3>Tour of WGSL</h3><p>An interactive tour of the language, one feature at a time.</p></a></li><li><a class="card" href="https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createShaderModule" rel="noopener external"><span class="card-kicker">developer.mozilla.org</span><h3>MDN: GPUDevice.createShaderModule()</h3><p>Compiling WGSL source into a shader module and reading its errors.</p></a></li></ul>
+
+      <nav class="lesson-nav lesson-nav-bottom" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/first-triangle/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/vertex-buffers/" rel="next">Next ❯</a>
+      </nav>
+    </article>
+  </main>
+</div>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="/site/tutorials/">Tutorials</a>
+      <a href="/site/articles/">Articles</a>
+      <a href="/site/games/">Games</a>
+      <a href="/site/tools/">Tools</a>
+      <a href="/site/wgpu3d/">wgpu3d</a>
+      <a href="/site/resources/">WebGPU resources</a>
+      <a href="/site/about/">About</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </nav>
+    <p class="footer-note">WebGPU games, tools and tutorials, with notes on how they're made.</p>
+  </div>
+</footer>
+
+</body>
+</html>

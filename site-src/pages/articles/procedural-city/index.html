@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>Building a procedural city in WebGPU | gpuengine Articles</title>
+<meta name="description" content="How City Drive grows an endless city from one seed: a road graph that expands as you drive, blocks derived from a segment index, districts, lots and junctions.">
+<meta property="og:title" content="Building a procedural city in WebGPU">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2026-10-08">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Building a procedural city in WebGPU",
+    "description": "How City Drive generates its endless city from a seed: road graph, blocks, districts, buildings, junctions and scenery.",
+    "datePublished": "2026-10-08",
+    "author": { "@type": "Person", "name": "Abhishek Sengar" },
+    "publisher": { "@type": "Organization", "name": "gpuengine", "url": "{{origin}}/" },
+    "url": "{{canonical}}",
+    "image": "{{origin}}/site/media/articles/procedural-city-aerial.jpg"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Articles", "item": "{{origin}}/site/articles/" },
+      { "@type": "ListItem", "position": 2, "name": "Building a procedural city", "item": "{{canonical}}" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+{{include header.html}}
+<main id="main">
+  <article class="article">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/articles/">Articles</a> / City Drive</nav>
+    <h1>Building a procedural city in WebGPU</h1>
+    <p class="article-meta"><time datetime="2026-10-08">8 October 2026</time><span>14 min read</span><span>WebGPU · Procedural generation · Games</span></p>
+
+    <p class="article-lead"><a href="/site/games/city-drive/">City Drive</a> never loads a map. Every street, tower, park and bridge is made from one number, the world seed, while you drive. This article walks through the real code: how the road network grows, how a block decides what stands on it, and the shortcuts that keep it fast enough to run in a browser.</p>
+
+    <nav class="article-toc" aria-label="Contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#seeds">Two kinds of randomness</a></li>
+        <li><a href="#graph">A road graph that grows as you drive</a></li>
+        <li><a href="#edges">Edges: chains of 4.2 metre segments</a></li>
+        <li><a href="#blocks">Blocks: everything from one index</a></li>
+        <li><a href="#districts">Districts and street names</a></li>
+        <li><a href="#buildings">Planning a block of buildings</a></li>
+        <li><a href="#junctions">Junctions, corners and curbs</a></li>
+        <li><a href="#land">Parks, water, fields and the far city</a></li>
+        <li><a href="#tradeoffs">Trade-offs and limitations</a></li>
+      </ol>
+    </nav>
+
+    <figure class="article-figure">
+      <img src="/site/media/articles/procedural-city-aerial.jpg" alt="Aerial view of City Drive: a cluster of tall towers, a circular junction with four roads, lawns with houses, a park, a wheat field and lake water on both sides" width="1600" height="900" loading="lazy">
+      <figcaption>An aerial camera over seed 412, a few seconds after start. Everything here was generated in the browser, and the lake is simply where the generated land stops.</figcaption>
+    </figure>
+
+    <h2 id="seeds">Two kinds of randomness</h2>
+    <p>The seed lives in <code>environment.js</code>. If the page sets <code>presetWorldSeed</code> before the scripts run, that value is used; otherwise the game picks a random one. Every random decision in the city then flows through one of two functions.</p>
+<pre><code data-language="js">const WORLD_SEED = globalThis.presetWorldSeed ?? Math.random() * 1000.0 + 137.42;
+
+function seededRandom(seed) {
+  const x = Math.sin(seed * 12.9898 + WORLD_SEED * 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}</code></pre>
+<pre><code data-language="js">function makeRng(seed) {
+  let a = (Math.floor(seed) * 2654435761) &gt;&gt;&gt; 0;
+  return () =&gt; {
+    a = (a + 0x6D2B79F5) &gt;&gt;&gt; 0;
+    let t = a;
+    t = Math.imul(t ^ (t &gt;&gt;&gt; 15), t | 1);
+    t ^= t + Math.imul(t ^ (t &gt;&gt;&gt; 7), t | 61);
+    return ((t ^ (t &gt;&gt;&gt; 14)) &gt;&gt;&gt; 0) / 4294967296;
+  };
+}</code></pre>
+    <p><code>seededRandom</code> is the familiar "fractional part of a big sine" hash from shader code: no state, same input, same output. <code>makeRng</code> in <code>math.js</code> is a Mulberry32-style generator that returns a stream, so call order matters.</p>
+    <p>The split is deliberate. The <em>road graph</em> uses <code>makeRng</code> streams, because a road is a sequence of decisions. The <em>contents</em>, such as which building stands on a lot, use <code>seededRandom</code> keyed on numbers like the block index. Contents are therefore a pure function of position, the most important property in the design: any small piece of the city can be built alone, in any order, on any thread, and still agree with its neighbours.</p>
+
+    <h2 id="graph">A road graph that grows as you drive</h2>
+    <p>The network lives in one object in <code>road_graph.js</code>: two <code>Map</code>s of junctions and edges, an id counter, a block counter and a seed base derived from the world seed. It starts with a single junction at the origin. A junction is a point with a radius and a list of <em>arms</em>, the headings where roads leave it.</p>
+<pre><code data-language="js">function createJunction(x, z, backHeading, rng) {
+  const travel = backHeading + Math.PI;
+  const roll = rng();
+  const sides = roll &lt; 0.55 ? [0, 1, -1] : roll &lt; 0.78 ? [0, 1] : [0, -1];
+  const backArm = { heading: backHeading, edge: null, end: null, angle: 0 };
+  const arms = [backArm];
+  for (const side of sides) {
+    const spread = side === 0 ? 0.22 : 0.4;
+    arms.push({ heading: travel + side * Math.PI * 0.5 + (rng() - 0.5) * spread, edge: null, end: null, angle: 0, straight: side === 0 });
+  }</code></pre>
+    <p>Every junction has an arm back the way you came, one roughly straight ahead, and a 55% chance of a four-way crossing, otherwise a T to the left or right. Headings are jittered, so streets meet a little off 90 degrees and the city does not look like graph paper. <code>junctionRadius</code> then sizes the pad, growing it when two arms are close so the corners do not overlap, clamped between 11.5 and 18 metres.</p>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 800 380" role="img" aria-labelledby="graph-svg-title" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">
+        <title id="graph-svg-title">Diagram of the road graph: junctions with arms, edges made of segment nodes, and a rejected arm</title>
+        <g fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.8">
+          <path d="M120 300 Q 250 290 380 200"/>
+          <path d="M380 200 Q 470 140 640 120"/>
+          <path d="M380 200 Q 420 300 520 340"/>
+          <path d="M120 300 L 60 360"/>
+          <path d="M120 300 L 110 220"/>
+        </g>
+        <path d="M380 200 L 330 90" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="6 6" stroke-opacity="0.5"/>
+        <g fill="currentColor" fill-opacity="0.75">
+          <circle cx="160" cy="297" r="3.5"/><circle cx="200" cy="292" r="3.5"/><circle cx="240" cy="284" r="3.5"/><circle cx="280" cy="270" r="3.5"/><circle cx="318" cy="252" r="3.5"/><circle cx="352" cy="226" r="3.5"/>
+          <circle cx="420" cy="172" r="3.5"/><circle cx="465" cy="148" r="3.5"/><circle cx="515" cy="132" r="3.5"/><circle cx="565" cy="124" r="3.5"/><circle cx="605" cy="121" r="3.5"/>
+        </g>
+        <g fill="none" stroke-width="2.5" style="stroke: var(--accent)">
+          <circle cx="120" cy="300" r="16"/>
+          <circle cx="380" cy="200" r="18"/>
+          <circle cx="640" cy="120" r="16"/>
+          <circle cx="520" cy="340" r="14"/>
+        </g>
+        <g fill="currentColor">
+          <text x="70" y="335">start junction</text>
+          <text x="400" y="232">junction (4 arms)</text>
+          <text x="600" y="95">far junction</text>
+          <text x="545" y="345">far junction</text>
+          <text x="180" y="320">edge = list of nodes, one every 4.2 m</text>
+          <text x="210" y="80" fill-opacity="0.7">arm dropped: path not clear</text>
+        </g>
+        <g fill="currentColor" fill-opacity="0.7" font-size="12">
+          <text x="660" y="170">each new edge</text>
+          <text x="660" y="186">creates a new</text>
+          <text x="660" y="202">far junction,</text>
+          <text x="660" y="218">so the graph is</text>
+          <text x="660" y="234">a tree, not a grid</text>
+        </g>
+      </svg>
+      <figcaption>The graph grows outward. Each arm becomes an edge ending in a brand-new junction, and arms whose road would pass too close to existing roads are dropped.</figcaption>
+    </figure>
+
+    <p>Nothing is generated ahead of time. When the streaming code (see the <a href="/site/articles/streaming-world/">next article</a>) reaches a junction, it calls <code>ensureJunctionArms</code>, and only then does each empty arm get a road.</p>
+<pre><code data-language="js">function createEdgeFromArm(junction, arm, relax = 1.0) {
+  const rng = makeRng(roadGraph.seedBase + roadGraph.nextId * 7919 + junction.id * 131);
+  for (let attempt = 0; attempt &lt; 4; attempt++) {
+    const blockCount = rng() &lt; 0.5 ? 4 : 3;
+    const firstBlock = roadGraph.nextBlock;
+    const startX = junction.x - Math.sin(arm.heading) * junction.radius;
+    const startZ = junction.z - Math.cos(arm.heading) * junction.radius;
+    const nodes = generateEdgeNodes(startX, startZ, arm.heading, firstBlock * MANHATTAN_BLOCK_PERIOD, blockCount, rng);
+    const last = nodes[nodes.length - 1];
+    const probeX = last.x - Math.sin(last.heading) * 15;
+    const probeZ = last.z - Math.cos(last.heading) * 15;
+    if (!edgePathIsClear(nodes, probeX, probeZ, junction, relax)) continue;
+
+    roadGraph.nextBlock += blockCount + 1;
+    const farJunctionInfo = createJunction(0, 0, last.heading + Math.PI, rng);</code></pre>
+    <p>The rest places the far junction beyond the last node, names the street and links both arms. Two details matter.</p>
+    <ul>
+      <li><strong>Edges never join existing junctions.</strong> Every edge ends in a fresh junction, so the network is a tree that branches outward. <code>edgePathIsClear</code> checks every third node of the candidate and rejects it if it comes within roughly 62 to 75 metres of another road or 70 metres of another junction. There are four attempts.</li>
+      <li><strong>The straight-ahead arm is protected.</strong> Failed arms are removed, but the straight one gets more tries with the clearance loosened to 70%, 45% and finally zero, so dead ends are rare.</li>
+    </ul>
+<pre><code data-language="js">const straight = dropped.find(a =&gt; a.straight);
+if (straight) {
+  junction.arms.push(straight);
+  sortJunctionArms(junction);
+  for (const relax of [0.7, 0.45, 0.0]) {
+    if (createEdgeFromArm(junction, straight, relax)) return;
+  }
+  junction.arms.splice(junction.arms.indexOf(straight), 1);
+}</code></pre>
+    <p>Behind you, <code>evictFarGraph</code> runs every two seconds and deletes edges whose ends and midpoint are all over 1,400 metres from the car, then empty junctions. Arms that pointed at a deleted edge are emptied so they can grow again.</p>
+
+    <h2 id="edges">Edges: chains of 4.2 metre segments</h2>
+    <p>An edge is a list of nodes spaced <code>SEG_LENGTH = 4.2</code> metres apart. Each node stores a position, a heading, forward and right vectors, and a global <code>index</code>. <code>generateEdgeNodes</code> steers with a gentle curvature: at each block start there is a 45% chance of going straight, otherwise a bend of 0.008 radians per metre, steered back once the heading drifts 0.26 radians from the start. The heading is clamped to within 0.42 radians, so roads wander but never double back.</p>
+    <p>The global node index is the clever part. Each new edge reserves a run of block numbers from <code>roadGraph.nextBlock</code>, and its node indices start at <code>firstBlock * 18 + 3</code>. Every node therefore has a unique index, from which you get its block (<code>index / 18</code>) and its place in the block (<code>index % 18</code>). An edge of three or four blocks has 51 or 69 segments, about 214 or 290 metres.</p>
+    <table class="reference-table">
+      <thead><tr><th>Edge field</th><th>What it holds</th></tr></thead>
+      <tbody>
+        <tr><td><code>ja</code>, <code>jb</code>, <code>armA</code>, <code>armB</code></td><td>The junctions at each end and the arm records that point back to this edge</td></tr>
+        <tr><td><code>nodes</code>, <code>segmentCount</code></td><td>The node chain; segment <var>i</var> runs from node <var>i</var> to node <var>i</var>+1</td></tr>
+        <tr><td><code>firstBlock</code>, <code>lastBlock</code></td><td>The block numbers this edge reserved</td></tr>
+        <tr><td><code>name</code>, <code>streetId</code>, <code>districtIndex</code></td><td>Street identity, shared with the edge it continues if it is the straight arm</td></tr>
+        <tr><td><code>startCornerClear</code>, <code>endCornerClear</code></td><td>How many segments near each junction must stay free of buildings so corners do not collide</td></tr>
+      </tbody>
+    </table>
+    <p>That last field comes from <code>assignEdgeZones</code>. When two arms meet at a tight angle, buildings on one would poke into the other, so the clear distance is computed from the angle: <code>reach / tan(angle / 2)</code>, minus the junction radius, in segments. Each node gets <code>hidesLeftSide</code> and <code>hidesRightSide</code> flags, and when a segment is built, <code>refreshCrossRoadClearance</code> also probes up to 52 metres sideways and hides a side that would land on another road.</p>
+
+    <h2 id="blocks">Blocks: everything from one index</h2>
+    <p>A block is 18 segments, about 75.6 metres. <code>getManhattanBlockInfo</code> in <code>city_blocks.js</code> turns a node index into a description of that spot: is it an intersection, a crosswalk, a boulevard, is there a bridge overhead, is the left side a park? The result is stored on each node as <code>info</code>.</p>
+<pre><code data-language="js">const isWaterBlock = isOrdinaryBlock &amp;&amp; (blockNumber % 9 === 4);
+const waterSide = (Math.floor(blockNumber / 6) % 2 === 0) ? 1 : -1;
+const waterStyle = Math.floor(blockNumber / 6) % 3;
+const leftIsValley = isWaterBlock &amp;&amp; (waterSide &lt; 0);
+const rightIsValley = isWaterBlock &amp;&amp; (waterSide &gt; 0);
+
+const leftIsPark = isOrdinaryBlock &amp;&amp; !leftIsValley &amp;&amp; (blockNumber % 5 === 1);
+const rightIsPark = isOrdinaryBlock &amp;&amp; !rightIsValley &amp;&amp; (blockNumber % 7 === 3);
+const parkTheme = blockNumber % 3;
+const leftIsField = isOrdinaryBlock &amp;&amp; !leftIsValley &amp;&amp; !leftIsPark &amp;&amp; seededRandom(blockNumber * 5.71 + 1.3) &lt; OPEN_FIELD_SIDE_CHANCE;
+const rightIsField = isOrdinaryBlock &amp;&amp; !rightIsValley &amp;&amp; !rightIsPark &amp;&amp; seededRandom(blockNumber * 8.37 + 4.9) &lt; OPEN_FIELD_SIDE_CHANCE;</code></pre>
+    <p>Some choices are modular arithmetic (water every ninth block, parks on different cycles per side), others are seeded hashes (20% open fields per side, paving, bridges). The first and last block of every edge never get water, parks, fields or bridges, which keeps junctions tidy. Blocks with <code>blockNumber % 3 !== 2</code> become boulevards, 8.4 metres from centre to curb instead of 5.6, tapering over three segments.</p>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 810 230" role="img" aria-labelledby="block-svg-title" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+        <title id="block-svg-title">One 18-segment block: intersection segments 0 to 2, a possible street clock at 3, frontage lots centred on segments 5, 9, 13 and 17, backdrop towers at 3, 7, 11 and 15</title>
+        <g fill="currentColor" fill-opacity="0.06" stroke="currentColor" stroke-opacity="0.45">
+          <rect x="40" y="90" width="720" height="40"/>
+        </g>
+        <g fill="currentColor" fill-opacity="0.18">
+          <rect x="40" y="90" width="120" height="40"/>
+        </g>
+        <g stroke="currentColor" stroke-opacity="0.35">
+          <line x1="80" y1="90" x2="80" y2="130"/><line x1="120" y1="90" x2="120" y2="130"/><line x1="160" y1="90" x2="160" y2="130"/><line x1="200" y1="90" x2="200" y2="130"/><line x1="240" y1="90" x2="240" y2="130"/><line x1="280" y1="90" x2="280" y2="130"/><line x1="320" y1="90" x2="320" y2="130"/><line x1="360" y1="90" x2="360" y2="130"/><line x1="400" y1="90" x2="400" y2="130"/><line x1="440" y1="90" x2="440" y2="130"/><line x1="480" y1="90" x2="480" y2="130"/><line x1="520" y1="90" x2="520" y2="130"/><line x1="560" y1="90" x2="560" y2="130"/><line x1="600" y1="90" x2="600" y2="130"/><line x1="640" y1="90" x2="640" y2="130"/><line x1="680" y1="90" x2="680" y2="130"/><line x1="720" y1="90" x2="720" y2="130"/>
+        </g>
+        <g fill="currentColor" text-anchor="middle">
+          <text x="60" y="115">0</text><text x="100" y="115">1</text><text x="140" y="115">2</text><text x="180" y="115">3</text><text x="220" y="115">4</text><text x="260" y="115">5</text><text x="300" y="115">6</text><text x="340" y="115">7</text><text x="380" y="115">8</text><text x="420" y="115">9</text><text x="460" y="115">10</text><text x="500" y="115">11</text><text x="540" y="115">12</text><text x="580" y="115">13</text><text x="620" y="115">14</text><text x="660" y="115">15</text><text x="700" y="115">16</text><text x="740" y="115">17</text>
+        </g>
+        <g fill="none" stroke-width="2.5" style="stroke: var(--accent)">
+          <rect x="172" y="30" width="136" height="50" rx="3"/>
+          <rect x="332" y="30" width="136" height="50" rx="3"/>
+          <rect x="492" y="30" width="136" height="50" rx="3"/>
+          <rect x="652" y="30" width="136" height="50" rx="3"/>
+        </g>
+        <g fill="currentColor">
+          <text x="190" y="60">lot 0 (seg 5)</text>
+          <text x="350" y="60">lot 1 (seg 9)</text>
+          <text x="506" y="60">lot 2 (seg 13)</text>
+          <text x="666" y="60">lot 3 (seg 17)</text>
+          <text x="40" y="22" font-size="11" fill-opacity="0.75">each 14.6 m lot is centred on the start of its owner segment</text>
+          <text x="44" y="150">intersection</text>
+          <text x="44" y="166">cross street</text>
+          <text x="160" y="174">clock?</text>
+        </g>
+        <g fill="currentColor" fill-opacity="0.6">
+          <rect x="172" y="140" width="16" height="16"/>
+          <rect x="332" y="140" width="16" height="16"/>
+          <rect x="492" y="140" width="16" height="16"/>
+          <rect x="652" y="140" width="16" height="16"/>
+        </g>
+        <text fill="currentColor" fill-opacity="0.75" font-size="11"><tspan x="260" y="190">filled squares: backdrop towers (segment % 4 = 3)</tspan><tspan x="260" y="208">outlined boxes: frontage lots, each built by one segment</tspan></text>
+      </svg>
+      <figcaption>Inside one block. Each frontage building is built by the single segment that owns its lot, even though the building is longer than that segment.</figcaption>
+    </figure>
+
+    <h2 id="districts">Districts and street names</h2>
+    <p><code>city_districts.js</code> defines seven districts, each a bag of weights and colours: preferred building styles, how often lots are doubled, backdrop tower heights and skyline tones.</p>
+    <table class="reference-table">
+      <thead><tr><th>District</th><th>Double-lot chance</th><th>Backdrop towers</th><th>Character</th></tr></thead>
+      <tbody>
+        <tr><td>Brownstone Row</td><td>0.12</td><td>14 to 32 m</td><td>Brownstones, Georgian and Victorian terraces</td></tr>
+        <tr><td>Financial Canyon</td><td>0.5</td><td>60 to 130 m</td><td>Limestone setbacks, colonnades, temple banks</td></tr>
+        <tr><td>Cast-Iron Lofts</td><td>0.15</td><td>22 to 48 m</td><td>Cast-iron lofts and warehouses</td></tr>
+        <tr><td>Civic Avenue</td><td>0.4</td><td>34 to 68 m</td><td>Temple banks, clock towers, fountain plazas (the default)</td></tr>
+        <tr><td>Glass Midtown</td><td>0.55</td><td>70 to 140 m</td><td>Bronze glass towers and Art Deco supertalls</td></tr>
+        <tr><td>Maple Heights</td><td>0.1</td><td>none</td><td>Suburban homes on lawns</td></tr>
+        <tr><td>West Side Warehouses</td><td>0.14</td><td>18 to 40 m</td><td>Storage warehouses</td></tr>
+      </tbody>
+    </table>
+    <p>Districts belong to <em>streets</em>, not areas. In <code>streetIdentityForArm</code>, a straight continuation inherits the name and district of the road it continues, so an avenue keeps its character across junctions. Any other new edge gets a fresh name and a district that differs from every road already at the junction.</p>
+<pre><code data-language="js">function chooseDistrictAvoiding(takenDistrictIndices, seed) {
+  const candidates = CITY_DISTRICTS.map((_, index) =&gt; index).filter(index =&gt; !takenDistrictIndices.has(index));
+  const pool = candidates.length ? candidates : CITY_DISTRICTS.map((_, index) =&gt; index);
+  return pool[Math.floor(seed * pool.length) % pool.length];
+}</code></pre>
+    <p>Turning therefore always takes you somewhere that looks different. Roads heading roughly north-south take names from a short list of famous Manhattan streets; the rest get numbered names like "W 42ND ST".</p>
+
+    <h2 id="buildings">Planning a block of buildings</h2>
+    <p>Every segment builds its own roadside. <code>pushRoadsideBlocks</code> in <code>road_geometry.js</code> picks one of four kinds of content per side.</p>
+<pre><code data-language="js">for (let side = -1; side &lt;= 1; side += 2) {
+  const isValleySide = (side &lt; 0 &amp;&amp; startInfo.leftIsValley) || (side &gt; 0 &amp;&amp; startInfo.rightIsValley);
+  const isParkSide = (side &lt; 0 &amp;&amp; startInfo.leftIsPark) || (side &gt; 0 &amp;&amp; startInfo.rightIsPark);
+  if (segment.isSideHidden(side)) continue;
+  if (isValleySide) {
+    offset = pushManhattanWaterFeatureSide(vertices, offset, x, y, z, heading, side, index, startInfo.inBlockIdx, startRoadHalfWidth, startInfo.waterStyle);
+  } else if (sideIsFieldOf(startInfo, side)) {
+    offset = pushOpenFieldSide(vertices, offset, { pointAlong: segment.pointAlong, info: startInfo, side, heading, segmentIndex: index });
+  } else if (isParkSide) {
+    offset = pushManhattanParkBlock(vertices, offset, x, y, z, heading, side, index, startInfo.inBlockIdx, startRoadHalfWidth, startInfo.parkTheme);
+  } else {
+    offset = pushManhattanBuildingBlock(vertices, offset, {</code></pre>
+    <p>A building side runs a short pipeline in <code>street_buildings.js</code>: plinth, sidewalk furniture, frontage building, possible street clock, backdrop tower. Each side of a block has four frontage lots, owned by segments 5, 9, 13 and 17, and <code>planBlockFrontage</code> decides the whole row from the block number, side and district:</p>
+<pre><code data-language="js">function planBlockFrontage(blockNumber, side, district) {
+  const lots = [];
+  let lotIndex = 0;
+  while (lotIndex &lt; FRONTAGE_LOT_COUNT) {
+    const spanRoll = seededRandom(blockNumber * 19.7 + side * 5.3 + lotIndex * 3.1);
+    const styleRoll = seededRandom(blockNumber * 7.9 + side * 2.3 + lotIndex * 11.7);
+    const canSpanTwoLots = lotIndex % 2 === 0;
+    if (canSpanTwoLots &amp;&amp; spanRoll &lt; district.doubleLotChance) {
+      const style = pickWeightedStyle(DOUBLE_LOT_STYLES, district.doubleLotWeights, district.otherStyleWeight, styleRoll);
+      lots.push({ build: style.build, styleId: style.id, lotSpan: 2 });
+      lots.push(null);
+      lotIndex += 2;
+      continue;
+    }
+    const style = pickWeightedStyle(SINGLE_LOT_STYLES, district.singleLotWeights, district.otherStyleWeight, styleRoll);
+    lots.push({ build: style.build, styleId: style.id, lotSpan: 1 });
+    lotIndex += 1;
+  }
+  return lots;
+}</code></pre>
+    <p>Because the plan is a pure function, segment 9 can recompute it, see that lot 1 is the second half of an Art Deco supertall owned by segment 5, and build nothing. No segment needs to know whether its neighbours exist yet. <code>pickWeightedStyle</code> is a plain weighted pick; unlisted styles get the district's small <code>otherStyleWeight</code>, except the suburban home, which only appears where listed. There are fourteen single-lot styles and three double-lot ones.</p>
+    <p>Styles are built from a kit in <code>architecture_kit.js</code>. Its key helper, <code>lotPoint</code>, turns "distance from the road, distance along it, height" into world space, mirrored per side. Builders like <code>pushBrutalistTower</code> are then lists of boxes, columns and window grids; a brutalist tower gets 12 to 24 storeys of 3.6 metres over a 4.6 metre lobby, the count taken from the lot's seed.</p>
+
+    <figure class="article-figure">
+      <img src="/site/media/articles/procedural-city-street.jpg" alt="Street-level view behind a red car: stone towers on both sides, a colonnade on the right, street lamps, and a bridge crossing the road ahead" width="1600" height="900" loading="lazy">
+      <figcaption>Street level on the same seed. The colonnade on the right, the stepped plaza on the left and the bridge over the road all come from seeded rolls, not from a stored map.</figcaption>
+    </figure>
+
+    <p><code>pushBox</code> also registers a collision volume while an obstacle list is active, so geometry and collision data come from the same pass. Bridges work like lots: each ordinary block has a 60% chance of one at segment 7 to 11, in one of seven weighted styles.</p>
+
+    <h2 id="junctions">Junctions, corners and curbs</h2>
+    <p>Junctions are built separately by <code>junction_geometry.js</code>. The road surface is a 32-sided disc wide enough for the widest arriving road, and each arm gets zebra stripes, a stop line and a signal. Between neighbouring arms is a <em>corner</em>, the wedge of land in that sector.</p>
+
+    <figure class="article-figure">
+      <img src="/site/media/articles/procedural-city-junction.jpg" alt="Top-down view of a four-way junction: a circular road pad, four roads at uneven angles, corner buildings rotated toward the junction, lawns, a park with trees, a wheat field and a dry field" width="1600" height="900" loading="lazy">
+      <figcaption>The starting junction from above. The circular pad, uneven arm angles and corner buildings turned along each corner's bisector are all visible, along with parks and fields further along the roads.</figcaption>
+    </figure>
+
+    <p>Each corner's ground is a triangle fan. Buildings are tried at a fixed list of candidate spots (a fraction across the sector and a distance from the pad) and skipped if too close to either arm, another road or a building already placed. About 22% of corners become pocket parks instead. A <code>makeRng</code> stream seeded from the junction id keeps a junction identical every time it is rebuilt.</p>
+    <p>Where a segment meets a cross street, <code>curb_corners.js</code> rounds the sidewalk corner with a 2.8 metre quarter-circle in six steps.</p>
+    <p>One surprise: the cross streets every 75 metres are not in the graph. Segments 0 to 2 of each block are flagged as intersections, and <code>pushIntersectionApproach</code> paints a road strip out to a parallel street 64 metres away, with crosswalks and signals. The city reads as a grid, but you can only turn at real junctions.</p>
+
+    <h2 id="land">Parks, water, fields and the far city</h2>
+    <p>The other sides use the same block flags plus per-segment seeds.</p>
+    <ul>
+      <li><strong>Water</strong> (<code>waterfront_and_parks.js</code>): a lake promenade, cascade fountain or river pier, behind a seawall that is also a collision barrier. The ground drops into a basin 1.45 to 3.85 metres deep.</li>
+      <li><strong>Parks</strong>: a footpath, a monument at segment 9 in one of three themes, trees elsewhere, and gently rolling ground.</li>
+      <li><strong>Fields</strong> (<code>open_fields.js</code>): four styles (wheat rows, meadow, pasture and husk grass), with hay bales and lone trees, and a barn at segment 9 of pasture blocks.</li>
+      <li><strong>Far city</strong> (<code>far_city.js</code>): beyond the roadside band, each segment fills out to 112 metres with a parallel street and two rows of cheap towers scaled by district. It probes sideways in 6 metre steps and stops short of any real road.</li>
+    </ul>
+    <p><code>road_elevation.js</code> defines terrain as three crossing sine swells, scaled so the steepest combined slope is a 15% grade. Geometry is built flat, then draped: each vertex is lifted by <code>terrainHeightAt(x, z)</code> and each normal recomputed.</p>
+<pre><code data-language="js">function terrainHeightAt(x, z) {
+  let height = 0;
+  for (const swell of TERRAIN_SWELLS) {
+    height += swell.amplitudeMeters * Math.sin((x * swell.directionX + z * swell.directionZ) * swell.wavenumber + swell.phase);
+  }
+  return height;
+}</code></pre>
+    <p><code>shoreline.js</code> defines land as anything within 112 metres either side of a streamed segment, or near a junction. Everything else is lake; the physics uses this to push the car back to shore, and it is why the city looks like a branching island from above.</p>
+
+    <section class="article-takeaways" aria-labelledby="takeaways-heading">
+      <h2 id="takeaways-heading">Key takeaways</h2>
+      <ul>
+        <li>Use a stateful generator for structure (the road graph) and a stateless hash for content, so content can be rebuilt anywhere in any order.</li>
+        <li>A global, unique index per road segment lets you derive blocks, lots and features with simple arithmetic.</li>
+        <li>Plan a whole row of lots from one key, then let each segment build only its own lot. Neighbours agree without talking to each other.</li>
+        <li>Grow the graph lazily, reject roads that would collide, and evict what is far behind.</li>
+        <li>Build flat, then drape onto terrain. It keeps every builder simple.</li>
+      </ul>
+    </section>
+
+    <h2 id="tradeoffs">Trade-offs and limitations</h2>
+    <p><strong>The world is not persistent.</strong> A new edge's random stream is seeded from <code>roadGraph.nextId</code>, a counter that only rises, and block numbers come from another. Drive 1,400 metres away and back, and the evicted roads are replaced by different ones. The seed repeats the city only if you repeat the route. I suspect that is an accepted trade for an endless drive, but the code does not say so.</p>
+    <p><strong>No loops.</strong> Edges only end in new junctions, so you can never drive round a block back to where you started. The painted cross streets hide this at speed.</p>
+    <p><strong>Periodic patterns.</strong> Water every ninth block and parks on cycles of five and seven are cheap, but over a long drive the rhythm shows if you look for it.</p>
+    <p><strong>A fixed vertex budget.</strong> Each segment must fit in 7,200 vertices, and <code>pushTriangle</code> silently drops triangles past that. A few builders check the remaining room before adding an expensive corner building; most rely on fitting. Overflow leaves holes rather than errors, so it needs checking by hand.</p>
+    <p>Building the city in 4.2 metre pieces is what lets it be built on background threads while you drive. The <a href="/site/articles/streaming-world/">next article</a> covers how those pieces are chosen, built in Web Workers and uploaded to the GPU.</p>
+
+    <nav class="article-pager" aria-label="More articles">
+      <a href="/site/articles/" rel="prev"><small>Previous</small>All articles</a>
+      <a href="/site/articles/streaming-world/" rel="next"><small>Next article</small>Streaming an open world with Web Workers</a>
+    </nav>
+  </article>
+</main>
+{{include footer.html}}
+</body>
+</html>

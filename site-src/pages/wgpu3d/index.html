@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>wgpu3d — Lightweight WebGPU 3D Library for Playable Scenes | gpuengine</title>
+<meta name="description" content="wgpu3d is a small WebGPU library for 3D scenes with drivable cars and walkable characters: one 48 KB file with sun shadows, sky, fog, a mesh builder, cameras, keyboard and touch input, and ready-made prefabs.">
+<meta property="og:title" content="wgpu3d — Lightweight WebGPU 3D Library for Playable Scenes">
+<meta property="og:description" content="One small JavaScript file for WebGPU scenes you can drive and walk around in. Built from the engine behind City Drive.">
+<meta property="og:type" content="website">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    "name": "wgpu3d",
+    "description": "A lightweight WebGPU library for 3D scenes with controllable and playable objects.",
+    "url": "{{canonical}}",
+    "programmingLanguage": "JavaScript",
+    "runtimePlatform": "Web browsers with WebGPU",
+    "version": "{{wgpu3d-version}}",
+    "license": "https://spdx.org/licenses/GPL-2.0-or-later.html",
+    "codeRepository": "https://github.com/gpuengine/gpuengine.github.io",
+    "author": { "@type": "Person", "name": "Abhishek Sengar" },
+    "downloadUrl": "{{origin}}/{{wgpu3d-file}}"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "wgpu3d", "item": "{{canonical}}" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+{{include header.html}}
+<main id="main">
+  <article class="article">
+    <h1>wgpu3d</h1>
+    <p class="article-meta"><span>Version {{wgpu3d-version}}</span><span>GPL-2.0-or-later</span><span>One file, about 49 KB (17 KB gzipped)</span><span>WebGPU</span></p>
+    <p class="article-lead">wgpu3d is a small WebGPU library for 3D scenes you can play in: drive a car down a street, walk a character over crates, or build a village out of boxes and triangles. It is the rendering and driving code from <a href="/site/games/city-drive/">City Drive</a>, pulled out of the game and given a simple API.</p>
+
+    <div class="wgpu3d-download">
+      <a class="button" href="/{{wgpu3d-file}}" download>Download wgpu3d {{wgpu3d-version}}</a>
+      <span>or import it straight from <code>{{origin}}/{{wgpu3d-file}}</code></span>
+    </div>
+    <p>The version is in the file name and in the header comment of the file, and <code>VERSION</code> is exported. Every release gets its own file name, so a page that links to it only changes when you change the link. wgpu3d is free software under the <a href="https://github.com/gpuengine/gpuengine.github.io/blob/main/LICENSE" rel="noopener">GNU General Public License, version 2 or later</a> (<code>SPDX-License-Identifier: GPL-2.0-or-later</code>): you can use, change and share it, including commercially, as long as projects that ship it are shared under compatible terms and keep the header comment in the file. The source is on <a href="https://github.com/gpuengine/gpuengine.github.io/tree/main/src/wgpu3d" rel="noopener">GitHub</a>.</p>
+
+    <h2 id="quick-start">Quick start</h2>
+    <p>wgpu3d is a single ES module with no dependencies. Add a canvas, map the name <code>wgpu3d</code> to the file, and write a module script:</p>
+<pre><code data-language="html">&lt;canvas id="scene" style="width: 100%; height: 480px"&gt;&lt;/canvas&gt;
+&lt;script type="importmap"&gt;
+  { "imports": { "wgpu3d": "/{{wgpu3d-file}}" } }
+&lt;/script&gt;
+&lt;script type="module" src="game.js"&gt;&lt;/script&gt;</code></pre>
+<pre><code data-language="js">import { createApp, createCar, createGround, VehicleController } from "wgpu3d";
+
+const app = await createApp({ canvas: document.querySelector("#scene"), environment: "sunset" });
+app.add(createGround());
+
+const car = createCar({ paint: "#1d6fd8" });
+car.addBehavior(new VehicleController());
+app.add(car);
+
+app.follow(car);
+app.start();</code></pre>
+    <p>That is a complete program: a car on a field with sun shadows, a sky and a chase camera. Click the canvas and drive with WASD or the arrow keys, or drag on a phone.</p>
+
+    <h2 id="tutorials">Tutorials</h2>
+    <p>Each tutorial has a live demo running the code shown on the page.</p>
+    <ul class="article-list">
+      <li><a class="article-list-item" href="/site/wgpu3d/getting-started/"><span class="article-list-meta">Tutorial 1 · Basics</span><h3>Your first wgpu3d scene</h3><p>Objects, meshes, materials, behaviors and an orbit camera in thirty lines.</p></a></li>
+      <li><a class="article-list-item" href="/site/wgpu3d/drive-a-car/"><span class="article-list-meta">Tutorial 2 · Vehicles</span><h3>Make a drivable car</h3><p>A street with buildings and lamps, a car with a vehicle controller and a chase camera.</p></a></li>
+      <li><a class="article-list-item" href="/site/wgpu3d/collect-the-coins/"><span class="article-list-meta">Tutorial 3 · Characters</span><h3>A tiny platform game</h3><p>Walk, run and jump onto crates to collect coins, with a score and a timer.</p></a></li>
+      <li><a class="article-list-item" href="/site/wgpu3d/procedural-village/"><span class="article-list-meta">Tutorial 4 · Meshes</span><h3>Build a procedural village</h3><p>Write your own meshes with MeshBuilder and grow a different village from every seed.</p></a></li>
+    </ul>
+    <p>Every function and option is listed in the <a href="/site/wgpu3d/api/">API reference</a>.</p>
+
+    <h2 id="features">What is in the box</h2>
+    <ul>
+      <li><strong>Renderer</strong>: sky gradient with a sun disc, sun light with soft shadow maps, sky and ground ambient light, glossy highlights, glowing surfaces, distance fog and 4× antialiasing. Five lighting presets: morning, noon, sunset, dusk and night.</li>
+      <li><strong>Scene graph</strong>: objects with position, yaw, pitch, roll and scale, parent and child objects, tags, and behaviors that run every frame.</li>
+      <li><strong>MeshBuilder</strong>: boxes, cylinders, cones, spheres, tiled planes, lofts, triangles and quads, with per-vertex color, gloss and glow.</li>
+      <li><strong>Playable objects</strong>: a vehicle controller ported from City Drive's driving model, a character controller that walks, runs, jumps and stands on boxes, and simple box and sphere collisions.</li>
+      <li><strong>Cameras</strong>: a chase camera that trails a vehicle and an orbit camera you drag, pinch and scroll.</li>
+      <li><strong>Input</strong>: keyboard bindings plus a touch stick (drag to move, tap to jump) that works with no extra code.</li>
+      <li><strong>Prefabs</strong>: the City Drive car, a character, trees, buildings, roads, crates, coins, lamp posts and ground.</li>
+    </ul>
+
+    <h2 id="from-city-drive">How it relates to City Drive</h2>
+    <p>City Drive is a big, specialised program: an endless procedural city streamed by Web Workers, with traffic, weather and dozens of building generators. wgpu3d keeps the parts any small 3D game needs and drops the rest. The vertex format (position, normal, colour and a surface value per vertex), the yaw, pitch and roll convention, the box occlusion trick, the texel-snapped sun shadow camera and its 2×2 filtered lookup, the sky and ambient light, the car body and the driving model all come from the game. Everything is rewritten around a scene of objects instead of one large streamed vertex buffer.</p>
+
+    <h2 id="limits">What it does not do</h2>
+    <ul>
+      <li>No textures or model loading. Everything is coloured geometry, which keeps the file small and the look consistent.</li>
+      <li>One light: the sun. Glowing materials look lit but do not light their surroundings.</li>
+      <li>No physics engine. Collisions are circles against boxes and spheres on the ground plane, which is enough for driving and platforming but not for stacking or tumbling objects.</li>
+      <li>WebGPU only, so it needs a recent Chrome, Edge or Safari, or Firefox on Windows. Call <code>isSupported()</code> to show a fallback message.</li>
+    </ul>
+
+    {{official-links}}
+  </article>
+</main>
+{{include footer.html}}
+</body>
+</html>

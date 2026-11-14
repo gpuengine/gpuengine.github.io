@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>A Tiny WebGPU Platform Game with wgpu3d — Walk, Jump, Collect | gpuengine</title>
+<meta name="description" content="Build a small 3D platform game in the browser with wgpu3d: a character that walks, runs and jumps onto crates to collect spinning coins, with a score, a timer and a following camera.">
+<meta property="og:title" content="A Tiny Platform Game with wgpu3d">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2026-11-08">
+<script type="importmap">{ "imports": { "wgpu3d": "/{{wgpu3d-file}}" } }</script>
+<link rel="modulepreload" href="/{{wgpu3d-file}}">
+<script type="module" src="/site/wgpu3d/demo-runner.js"></script>
+<script type="application/ld+json">
+[
+  { "@context": "https://schema.org", "@type": "TechArticle", "headline": "A tiny platform game with wgpu3d", "description": "A character controller, pickups, a score and a timer with the wgpu3d WebGPU library.", "datePublished": "2026-11-08", "author": { "@type": "Person", "name": "Abhishek Sengar" }, "publisher": { "@type": "Organization", "name": "gpuengine", "url": "{{origin}}/" }, "url": "{{canonical}}" },
+  { "@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [ { "@type": "ListItem", "position": 1, "name": "wgpu3d", "item": "{{origin}}/site/wgpu3d/" }, { "@type": "ListItem", "position": 2, "name": "A tiny platform game", "item": "{{canonical}}" } ] }
+]
+</script>
+</head>
+<body>
+{{include header.html}}
+<main id="main">
+  <article class="article">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/wgpu3d/">wgpu3d</a> / Tutorial 3</nav>
+    <h1>A tiny platform game</h1>
+    <p class="article-meta"><time datetime="2026-11-08">8 November 2026</time><span>7 min read</span><span>wgpu3d · Characters</span></p>
+    <p class="article-lead">A character on a meadow, a few stacks of crates and fifteen coins, some of them only reachable by jumping. Collect them all and the game shows your time. This tutorial covers the character controller, standing on objects, pickups and a score drawn in plain HTML over the canvas.</p>
+
+    <figure class="wgpu3d-demo" data-wgpu3d-demo="coin-demo-code">
+      <div class="wgpu3d-demo-stage">
+        <canvas id="coin-demo" aria-label="A character in a meadow with crates and spinning gold coins"></canvas>
+        <output id="coin-score" class="wgpu3d-demo-hud"></output>
+        <button class="wgpu3d-demo-start" type="button">▶ Run the demo</button>
+        <p class="wgpu3d-demo-message" hidden></p>
+      </div>
+      <figcaption>Click the scene. Move with WASD or the arrow keys, hold Shift to run, Space to jump, drag to turn the camera. On a phone, drag to walk and tap to jump.</figcaption>
+    </figure>
+
+    <h2 id="code">The whole program</h2>
+<pre><code id="coin-demo-code" data-language="js">import { createApp, createCharacter, createGround, createCoin, createCrate, createTree, CharacterController, spin, bob, createRandom } from "wgpu3d";
+
+const app = await createApp({ canvas: document.querySelector("#coin-demo"), environment: "noon" });
+const scoreLabel = document.querySelector("#coin-score");
+const random = createRandom(3);
+
+app.add(createGround({ size: 90, tiles: 18, color: "#7cb35b", alternateColor: "#72a853" }));
+
+const coinSpots = [];
+for (let tower = 0; tower &lt; 5; tower++) {
+  const angle = (tower / 5) * Math.PI * 2;
+  const x = Math.cos(angle) * 9, z = Math.sin(angle) * 9;
+  const levels = tower % 3 + 1;
+  for (let level = 0; level &lt; levels; level++) {
+    app.add(createCrate({ size: 1.4, position: [x + level * 1.4, 0, z], yaw: angle }));
+    for (let stacked = 1; stacked &lt;= level; stacked++) {
+      app.add(createCrate({ size: 1.4, position: [x + level * 1.4, stacked * 1.4, z], yaw: angle }));
+    }
+  }
+  coinSpots.push([x + (levels - 1) * 1.4, levels * 1.4 + 0.9, z]);
+}
+for (let index = 0; index &lt; 10; index++) {
+  const angle = random() * Math.PI * 2, distance = random.range(3, 16);
+  coinSpots.push([Math.cos(angle) * distance, 0.9, Math.sin(angle) * distance]);
+}
+for (let index = 0; index &lt; 18; index++) {
+  const angle = random() * Math.PI * 2, distance = random.range(22, 40);
+  app.add(createTree({ seed: index, height: random.range(4, 7), position: [Math.cos(angle) * distance, 0, Math.sin(angle) * distance] }));
+}
+
+const coins = coinSpots.map((position) =&gt; {
+  const coin = createCoin({ position });
+  coin.addBehavior(spin(2.5));
+  coin.addBehavior(bob({ height: 0.15, speed: 3 }));
+  return coin;
+});
+app.add(...coins);
+
+const hero = createCharacter({ shirt: "#e8553d" });
+hero.addBehavior(new CharacterController());
+app.add(hero);
+app.orbit({ subject: hero, distance: 10, pitch: 0.55, minDistance: 4, maxDistance: 20 });
+
+let collected = 0;
+let finishTime = null;
+app.onUpdate(({ scene, timeSeconds }) =&gt; {
+  for (const coin of scene.touching(hero, { tag: "coin", radius: 0.7 })) {
+    coin.removeFromParent();
+    collected += 1;
+  }
+  if (collected === coins.length &amp;&amp; finishTime === null) finishTime = timeSeconds;
+  scoreLabel.textContent = finishTime === null
+    ? `Coins ${collected} / ${coins.length}`
+    : `All ${coins.length} coins in ${finishTime.toFixed(1)} s`;
+});
+app.start();</code></pre>
+
+    <h2 id="level">Building the level</h2>
+    <p>Five stacks of crates stand in a ring, each a little staircase one, two or three crates high, built with nested loops. A coin floats above the top of every stack, and ten more are scattered on the grass. Their positions are collected in <code>coinSpots</code> first and turned into coins afterwards, which keeps the level layout separate from what lives in it. Trees around the edge frame the play area.</p>
+    <p>Crates have box colliders, so the character cannot walk through them. More interesting is that the character can stand <em>on</em> them, which is what makes the stacks climbable.</p>
+
+    <h2 id="character">The character controller</h2>
+    <p><code>createCharacter</code> builds a blocky figure whose arms and legs are separate child objects pivoting at the shoulders and hips. <code>CharacterController</code> is the behavior that plays it:</p>
+    <ul>
+      <li>Movement is relative to the camera. Pressing forward walks away from the camera wherever it is pointing, which is what players expect in a third-person game.</li>
+      <li>Speed eases in and out rather than snapping, and the figure turns smoothly to face where it is going.</li>
+      <li>Jumping gives an upward speed that gravity takes away. In the air you keep a third of your steering, enough to correct a jump but not to fly.</li>
+      <li>Every frame it looks for the highest box top under its feet. If that top is no more than <code>stepHeight</code> above the feet, it becomes the floor. That one rule handles landing on crates, walking off their edges and stepping onto low kerbs.</li>
+      <li>While walking, legs and arms swing in opposite pairs at a rate tied to ground speed; in the air the legs tuck up.</li>
+    </ul>
+
+    <h2 id="pickups">Pickups</h2>
+    <p>Coins are prefabs tagged <code>"coin"</code> with a sphere collider that does not block movement. Two stacked behaviors, <code>spin</code> and <code>bob</code>, make them easy to spot. The game logic lives in <code>app.onUpdate</code>, which runs once a frame after every behavior:</p>
+    <ul>
+      <li><code>scene.touching(hero, { tag: "coin", radius: 0.7 })</code> returns every coin whose collider overlaps a circle around the hero and lies within reach vertically, so a coin above a crate is only collected from on top of it.</li>
+      <li>A collected coin is simply removed from the scene with <code>removeFromParent()</code>.</li>
+      <li>When the count reaches the total, the time is stored once and the label changes.</li>
+    </ul>
+    <p>The score itself is an ordinary <code>&lt;output&gt;</code> element positioned over the canvas. HTML is good at text, so there is no need to draw it in 3D.</p>
+
+    <h2 id="camera">A following orbit camera</h2>
+    <p><code>app.orbit({ subject: hero })</code> orbits the moving character instead of a fixed point. You can drag to look around while you walk, and because movement follows the camera, turning the view is also how you steer. On touch screens one finger moves the character, so the camera keeps to its last angle.</p>
+
+    <h2 id="try">Things to try</h2>
+    <ul>
+      <li>Raise <code>jumpSpeed</code> to 9 in the controller options and stack the crates higher for a harder course.</li>
+      <li>Give each coin a sound with the Web Audio API, or tint the hero gold for a moment with <code>hero.tint</code>.</li>
+      <li>Put a <code>VehicleController</code> car in the level and let the player switch between walking and driving.</li>
+    </ul>
+
+    <nav class="article-pager" aria-label="More tutorials">
+      <a href="/site/wgpu3d/drive-a-car/" rel="prev"><small>Tutorial 2</small>Make a drivable car</a>
+      <a href="/site/wgpu3d/procedural-village/" rel="next"><small>Tutorial 4</small>Build a procedural village</a>
+    </nav>
+  </article>
+</main>
+{{include footer.html}}
+</body>
+</html>

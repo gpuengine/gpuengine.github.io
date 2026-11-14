@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://gpuengine.github.io/site/tutorials/textures-samplers/">
+<meta property="og:url" content="https://gpuengine.github.io/site/tutorials/textures-samplers/">
+<meta property="og:site_name" content="gpuengine">
+<meta property="og:image" content="https://gpuengine.github.io/site/media/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<script src="/site/site.js" defer></script>
+<script src="/site/code-highlight.js" defer></script>
+
+<title>WebGPU Textures and Samplers — Images on the GPU | WebGPU Tutorial</title>
+<meta name="description" content="Learn WebGPU textures and samplers: createTexture, writeTexture, copyExternalImageToTexture, nearest vs linear filtering, UV coordinates and textureSample in WGSL.">
+<meta property="og:title" content="WebGPU Textures and Samplers — Images on the GPU">
+<meta property="og:type" content="article">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "WebGPU Textures and Samplers — Images on the GPU",
+    "description": "How to create, upload and sample textures in WebGPU, with runnable examples.",
+    "proficiencyLevel": "Beginner",
+    "url": "https://gpuengine.github.io/site/tutorials/textures-samplers/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Tutorials", "item": "https://gpuengine.github.io/site/tutorials/" },
+      { "@type": "ListItem", "position": 2, "name": "Textures & samplers", "item": "https://gpuengine.github.io/site/tutorials/textures-samplers/" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/site/tutorials/" aria-current="true" data-nav-section>Tutorials</a>
+    <a href="/site/articles/" data-nav-section>Articles</a>
+    <a href="/site/games/" data-nav-section>Games</a>
+    <a href="/site/tools/" data-nav-section>Tools</a>
+    <a class="site-nav-cta" href="/site/wgpu3d/" data-nav-section>wgpu3d</a>
+    <a class="site-nav-about" href="/site/about/" data-nav-section><svg class="site-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.42 0-8 2.24-8 5v2h16v-2c0-2.76-3.58-5-8-5Z"/></svg>About</a>
+  </nav>
+</header>
+
+<div class="doc">
+  <nav class="doc-sidebar" aria-label="Tutorials">
+  <a class="doc-sidebar-home" href="/site/tutorials/">WebGPU Tutorial Home</a>
+  <p class="doc-sidebar-heading">Getting started</p>
+  <a href="/site/tutorials/webgpu-intro/">1. What is WebGPU?</a>
+  <a href="/site/tutorials/first-triangle/">2. Your first triangle</a>
+  <a href="/site/tutorials/wgsl-basics/">3. WGSL basics</a>
+  <a href="/site/tutorials/vertex-buffers/">4. Vertex buffers</a>
+  <a href="/site/tutorials/uniforms-bind-groups/">5. Uniforms &amp; bind groups</a>
+  <p class="doc-sidebar-heading">Going 3D</p>
+  <a href="/site/tutorials/camera-matrices/">6. Camera &amp; matrices</a>
+  <a href="/site/tutorials/depth-buffer/">7. Depth buffer</a>
+  <a href="/site/tutorials/textures-samplers/" aria-current="page">8. Textures &amp; samplers</a>
+  <a href="/site/tutorials/instancing/">9. Instancing</a>
+  <p class="doc-sidebar-heading">Advanced</p>
+  <a href="/site/tutorials/compute-shaders/">10. Compute shaders</a>
+  <a href="/site/tutorials/shadow-mapping/">11. Shadow mapping</a>
+  <a href="/site/tutorials/post-processing/">12. Post-processing</a>
+  <p class="doc-sidebar-heading">Practice</p>
+  <a href="/site/tutorials/playground/?example=first-triangle" target="_blank">Playground</a>
+  <a href="/site/resources/">Official docs &amp; resources</a>
+</nav>
+
+  <main id="main">
+    <article>
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/tutorials/">Tutorials</a> / Going 3D</nav>
+      <h1>WebGPU <span class="lesson-title-accent">Textures &amp; Samplers</span></h1>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/depth-buffer/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/instancing/" rel="next">Next ❯</a>
+      </nav>
+
+      <p class="lesson-intro">A <strong>texture</strong> is an image on the GPU. A <strong>sampler</strong> decides how the shader reads it.</p>
+      <p>Textures put pictures, patterns and text on your shapes. In this lesson you will make a texture from raw pixels, copy a canvas drawing into one, and draw both on a square.</p>
+
+      <figure class="example-demo">
+        <iframe src="/site/tutorials/examples/texture-from-canvas.html" title="A picture with text and shapes, drawn with the 2D canvas API and shown as a WebGPU texture" loading="lazy"></iframe>
+        <figcaption>A picture drawn with the 2D canvas API, copied into a texture and drawn by WebGPU.</figcaption>
+      </figure>
+
+      <h2>Textures vs Buffers</h2>
+      <p>You already know <a href="/site/tutorials/vertex-buffers/">buffers</a>. A buffer is a plain list of bytes. A texture is different:</p>
+      <table class="reference-table">
+        <thead><tr><th></th><th>Buffer</th><th>Texture</th></tr></thead>
+        <tbody>
+          <tr><td>Shape</td><td>A flat list of bytes</td><td>A 1D, 2D or 3D grid of pixels</td></tr>
+          <tr><td>Pixel format</td><td>None. You decide what the bytes mean.</td><td>Fixed, for example <code>rgba8unorm</code></td></tr>
+          <tr><td>Reading in WGSL</td><td>By index: <code>data[i]</code></td><td>By coordinate, with a sampler: <code>textureSample(...)</code></td></tr>
+          <tr><td>Filtering</td><td>No</td><td>Yes. The GPU can blend neighbouring pixels.</td></tr>
+        </tbody>
+      </table>
+      <p>A pixel in a texture is often called a <dfn>texel</dfn>.</p>
+
+      <h2>Create a Texture</h2>
+      <p>Use <code>device.createTexture()</code>. Give it a size, a format and a usage:</p>
+<pre><code data-language="js">const texture = device.createTexture({
+  size: [TEXTURE_SIZE, TEXTURE_SIZE],
+  format: "rgba8unorm",
+  usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+});</code></pre>
+      <ul>
+        <li><code>"rgba8unorm"</code> means 4 bytes per texel: red, green, blue and alpha. Each byte goes from 0 to 255, and the shader sees it as 0.0 to 1.0.</li>
+        <li><code>TEXTURE_BINDING</code> lets a shader read the texture.</li>
+        <li><code>COPY_DST</code> lets you copy data into it.</li>
+      </ul>
+
+      <h2>Upload Raw Pixels</h2>
+      <p><code>device.queue.writeTexture()</code> copies bytes from JavaScript into a texture. You tell it how many bytes are in each row with <strong>bytesPerRow</strong>:</p>
+<pre><code data-language="js">device.queue.writeTexture(
+  { texture },
+  createCheckerboardPixels(),
+  { bytesPerRow: TEXTURE_SIZE * BYTES_PER_PIXEL },
+  [TEXTURE_SIZE, TEXTURE_SIZE]
+);</code></pre>
+      <p>The pixels are a <code>Uint8Array</code>, filled row by row from the top:</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Build an 8×8 checkerboard, with an orange texel in the top-left corner:</p>
+<pre><code data-language="js">function createCheckerboardPixels() {
+  const pixels = new Uint8Array(TEXTURE_SIZE * TEXTURE_SIZE * BYTES_PER_PIXEL);
+  for (let y = 0; y &lt; TEXTURE_SIZE; y++) {
+    for (let x = 0; x &lt; TEXTURE_SIZE; x++) {
+      const isTopLeft = x === 0 &amp;&amp; y === 0;
+      const isLight = (x + y) % 2 === 0;
+      const color = isTopLeft ? topLeftMarker : isLight ? lightSquare : darkSquare;
+      pixels.set(color, (y * TEXTURE_SIZE + x) * BYTES_PER_PIXEL);
+    }
+  }
+  return pixels;
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=texture-checkerboard" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        <code>writeTexture</code> accepts any <code>bytesPerRow</code>. Copies inside the GPU, from a buffer to a texture, need <code>bytesPerRow</code> to be a multiple of 256.
+      </div>
+
+      <h2>Texture Coordinates (UV)</h2>
+      <p>Shaders do not read textures by pixel number. They use <dfn>UV coordinates</dfn> from 0 to 1, so the same code works for any texture size:</p>
+      <ul>
+        <li><code>(0, 0)</code> is the <strong>top-left</strong> corner of the texture.</li>
+        <li><code>(1, 1)</code> is the <strong>bottom-right</strong> corner.</li>
+        <li><code>u</code> goes left to right, <code>v</code> goes top to bottom.</li>
+      </ul>
+      <p>Each corner of the square gets a UV, next to its position. The GPU blends the UVs across the square, so every pixel knows where to read:</p>
+<pre><code data-language="js">return new Float32Array([
+  left, top, 0, 0,
+  left, bottom, 0, 1,
+  right, bottom, 1, 1,
+  left, top, 0, 0,
+  right, bottom, 1, 1,
+  right, top, 1, 0
+]);</code></pre>
+      <div class="callout callout-warning">
+        <strong>Warning</strong>
+        In clip space, y points <strong>up</strong>. In UV space, v points <strong>down</strong>. So the top corners of the square get <code>v = 0</code>. If your image appears upside down, this is usually why.
+      </div>
+
+      <h2>Samplers</h2>
+      <p>A <strong>sampler</strong> tells the GPU how to read a texture: how to blend texels, and what to do outside the 0-to-1 range.</p>
+<pre><code data-language="js">const sampler = device.createSampler({
+  magFilter: "nearest",
+  minFilter: "nearest"
+});</code></pre>
+      <p>The two most important filter values are:</p>
+      <ul>
+        <li><code>"nearest"</code>: use the single closest texel. Sharp, blocky pixels. Good for pixel art.</li>
+        <li><code>"linear"</code>: blend the four closest texels. Smooth. Good for photos.</li>
+      </ul>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>The same 4×4 texture, drawn with a nearest sampler (left) and a linear sampler (right):</p>
+<pre><code data-language="js">const nearestSampler = device.createSampler({
+  magFilter: "nearest",
+  minFilter: "nearest"
+});
+const linearSampler = device.createSampler({
+  magFilter: "linear",
+  minFilter: "linear"
+});</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=sampler-filtering" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <p>The example makes one bind group per sampler. It draws the left square with one and the right square with the other. The texture is the same.</p>
+
+      <h2>Reading a Texture in WGSL</h2>
+      <p>In WGSL, a texture has the type <code>texture_2d&lt;f32&gt;</code>, and a sampler has the type <code>sampler</code>. Read a colour with <code>textureSample(texture, sampler, uv)</code>:</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Pass the UV from the vertex shader, and sample the texture in the fragment shader:</p>
+<pre><code data-language="wgsl">struct VertexOutput {
+  @builtin(position) position: vec4f,
+  @location(0) uv: vec2f,
+}
+
+@group(0) @binding(0) var checkerTexture: texture_2d&lt;f32&gt;;
+@group(0) @binding(1) var checkerSampler: sampler;
+
+@vertex
+fn vertexMain(@location(0) position: vec2f, @location(1) uv: vec2f) -> VertexOutput {
+  var output: VertexOutput;
+  output.position = vec4f(position, 0.0, 1.0);
+  output.uv = uv;
+  return output;
+}
+
+@fragment
+fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+  return textureSample(checkerTexture, checkerSampler, input.uv);
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=texture-checkerboard" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        <code>textureSample</code> can only be used in a fragment shader. In a vertex or compute shader, use <code>textureSampleLevel</code> or <code>textureLoad</code> instead.
+      </div>
+
+      <h2>Bind the Texture and Sampler</h2>
+      <p>Textures and samplers reach the shader through a <a href="/site/tutorials/uniforms-bind-groups/">bind group</a>, just like uniform buffers. Pass a <strong>texture view</strong> for the texture, and the sampler itself:</p>
+<pre><code data-language="js">const bindGroup = device.createBindGroup({
+  layout: pipeline.getBindGroupLayout(0),
+  entries: [
+    { binding: 0, resource: texture.createView() },
+    { binding: 1, resource: sampler }
+  ]
+});</code></pre>
+      <p>Then call <code>pass.setBindGroup(0, bindGroup)</code> before drawing.</p>
+
+      <h2>Upload an Image</h2>
+      <p>To put a picture in a texture, use <code>device.queue.copyExternalImageToTexture()</code>. The source can be an <code>ImageBitmap</code>, an <code>HTMLCanvasElement</code>, an <code>OffscreenCanvas</code>, a video frame and more.</p>
+      <p>The example draws its own picture with the 2D canvas API, so it needs no image file:</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Draw text and shapes on an <code>OffscreenCanvas</code>, then copy it into a texture:</p>
+<pre><code data-language="js">function drawPicture() {
+  const pictureCanvas = new OffscreenCanvas(IMAGE_WIDTH, IMAGE_HEIGHT);
+  const drawing = pictureCanvas.getContext("2d");
+  const gradient = drawing.createLinearGradient(0, 0, IMAGE_WIDTH, IMAGE_HEIGHT);
+  gradient.addColorStop(0, "#1e3a8a");
+  gradient.addColorStop(1, "#9d174d");
+  drawing.fillStyle = gradient;
+  drawing.fillRect(0, 0, IMAGE_WIDTH, IMAGE_HEIGHT);
+  drawing.fillStyle = "#ffffff";
+  drawing.font = "bold 52px system-ui, sans-serif";
+  drawing.fillText("Hello, WebGPU!", 40, 140);
+  return pictureCanvas;
+}
+
+const texture = device.createTexture({
+  size: [IMAGE_WIDTH, IMAGE_HEIGHT],
+  format: "rgba8unorm",
+  usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
+});
+device.queue.copyExternalImageToTexture(
+  { source: drawPicture() },
+  { texture },
+  [IMAGE_WIDTH, IMAGE_HEIGHT]
+);</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=texture-from-canvas" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <div class="callout callout-warning">
+        <strong>Warning</strong>
+        <code>copyExternalImageToTexture</code> needs the texture usage to include <code>RENDER_ATTACHMENT</code> as well as <code>COPY_DST</code>. Without it, you get a validation error.
+      </div>
+      <p>To load a real image file, fetch it, turn it into an <code>ImageBitmap</code>, and copy that in the same way:</p>
+<pre><code data-language="js">const response = await fetch("photo.png");
+const bitmap = await createImageBitmap(await response.blob());
+const photoTexture = device.createTexture({
+  size: [bitmap.width, bitmap.height],
+  format: "rgba8unorm",
+  usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
+});
+device.queue.copyExternalImageToTexture({ source: bitmap }, { texture: photoTexture }, [bitmap.width, bitmap.height]);</code></pre>
+
+      <h2>Sampler Options</h2>
+      <p>Filters decide how texels are blended:</p>
+      <table class="reference-table">
+        <thead><tr><th>Option</th><th>Values</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>magFilter</code></td><td><code>"nearest"</code>, <code>"linear"</code></td><td>Used when the texture is drawn <strong>bigger</strong> than its real size (magnified)</td></tr>
+          <tr><td><code>minFilter</code></td><td><code>"nearest"</code>, <code>"linear"</code></td><td>Used when the texture is drawn <strong>smaller</strong> than its real size (minified)</td></tr>
+          <tr><td><code>mipmapFilter</code></td><td><code>"nearest"</code>, <code>"linear"</code></td><td>How to blend between mipmap levels, if the texture has them</td></tr>
+          <tr><td><code>maxAnisotropy</code></td><td>1 to 16</td><td>Sharper textures on surfaces seen at an angle. Needs all filters set to <code>"linear"</code>.</td></tr>
+          <tr><td><code>compare</code></td><td><code>"less"</code>, <code>"greater"</code>, …</td><td>Makes a comparison sampler, used for depth textures and shadows</td></tr>
+        </tbody>
+      </table>
+      <p>Address modes decide what happens when a UV is below 0 or above 1:</p>
+      <table class="reference-table">
+        <thead><tr><th>Option</th><th>Value</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td rowspan="3"><code>addressModeU</code>, <code>addressModeV</code>, <code>addressModeW</code></td><td><code>"clamp-to-edge"</code></td><td>The edge texels are stretched outwards. The default.</td></tr>
+          <tr><td><code>"repeat"</code></td><td>The texture tiles: 1.25 reads the same as 0.25</td></tr>
+          <tr><td><code>"mirror-repeat"</code></td><td>The texture tiles, flipping every other copy</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        To tile a floor texture, use <code>addressModeU: "repeat"</code> and <code>addressModeV: "repeat"</code>, and give the corners UVs bigger than 1. A UV of 4 tiles the texture four times.
+      </div>
+
+      <h2>Exercises</h2>
+      <div class="exercise">
+        <p>1. A texture is 64 texels wide with format <code>"rgba8unorm"</code>. What is <code>bytesPerRow</code> in <code>writeTexture</code>?</p>
+        <details><summary>Show answer</summary><p>64 × 4 = <code>256</code></p></details>
+      </div>
+      <div class="exercise">
+        <p>2. In the checkerboard example, change the sampler to <code>"linear"</code>. What happens to the squares?</p>
+        <details><summary>Show answer</summary><p>The edges between squares become soft and blurry, because the GPU blends neighbouring texels.</p></details>
+      </div>
+      <div class="exercise">
+        <p>3. Make the checkerboard tile 3 times in each direction.</p>
+        <details><summary>Show answer</summary><p>Add repeat address modes to the sampler, and multiply the UV in the fragment shader:</p><pre><code data-language="js">const sampler = device.createSampler({
+  magFilter: "nearest",
+  minFilter: "nearest",
+  addressModeU: "repeat",
+  addressModeV: "repeat"
+});</code></pre><pre><code data-language="wgsl">return textureSample(checkerTexture, checkerSampler, input.uv * 3.0);</code></pre></details>
+      </div>
+      <div class="exercise">
+        <p>4. Where is the orange texel drawn, and why?</p>
+        <details><summary>Show answer</summary><p>In the top-left corner. It is the first texel in the data, and UV <code>(0, 0)</code> is the top-left of the texture.</p></details>
+      </div>
+
+      <h2>Summary</h2>
+      <ul>
+        <li>A texture is a grid of texels with a fixed format, such as <code>rgba8unorm</code>.</li>
+        <li>Upload raw bytes with <code>writeTexture</code>, and images or canvases with <code>copyExternalImageToTexture</code>.</li>
+        <li>UV coordinates go from <code>(0, 0)</code> at the top-left to <code>(1, 1)</code> at the bottom-right.</li>
+        <li>A sampler sets filtering (<code>"nearest"</code> or <code>"linear"</code>) and address modes (<code>"clamp-to-edge"</code> or <code>"repeat"</code>).</li>
+        <li>In WGSL, read a <code>texture_2d&lt;f32&gt;</code> with <code>textureSample(texture, sampler, uv)</code>.</li>
+      </ul>
+
+      <h2 id="official-docs">Official documentation</h2>
+<p class="official-links-lead">Go deeper with the specifications and reference documentation:</p>
+<ul class="cards official-cards"><li><a class="card" href="https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createTexture" rel="noopener external"><span class="card-kicker">developer.mozilla.org</span><h3>MDN: GPUDevice.createTexture()</h3><p>Texture sizes, formats, mip levels and usage flags.</p></a></li><li><a class="card" href="https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createSampler" rel="noopener external"><span class="card-kicker">developer.mozilla.org</span><h3>MDN: GPUDevice.createSampler()</h3><p>Filtering, address modes and anisotropy.</p></a></li><li><a class="card" href="https://developer.mozilla.org/en-US/docs/Web/API/GPUQueue/copyExternalImageToTexture" rel="noopener external"><span class="card-kicker">developer.mozilla.org</span><h3>MDN: GPUQueue.copyExternalImageToTexture()</h3><p>Uploading images, canvases and video frames to the GPU.</p></a></li><li><a class="card" href="https://www.w3.org/TR/WGSL/#texturesample" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WGSL specification: textureSample</h3><p>The built-in that reads a filtered texel in a fragment shader.</p></a></li></ul>
+
+      <nav class="lesson-nav lesson-nav-bottom" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/depth-buffer/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/instancing/" rel="next">Next ❯</a>
+      </nav>
+    </article>
+  </main>
+</div>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="/site/tutorials/">Tutorials</a>
+      <a href="/site/articles/">Articles</a>
+      <a href="/site/games/">Games</a>
+      <a href="/site/tools/">Tools</a>
+      <a href="/site/wgpu3d/">wgpu3d</a>
+      <a href="/site/resources/">WebGPU resources</a>
+      <a href="/site/about/">About</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </nav>
+    <p class="footer-note">WebGPU games, tools and tutorials, with notes on how they're made.</p>
+  </div>
+</footer>
+
+</body>
+</html>

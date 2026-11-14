@@ -1,0 +1,3 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Copyright (C) 2026 Abhishek Sengar
+const state={trafficEnabled:!1,cameraMode:0,autoSteer:!1,cruiseHold:!1,turnIntent:0,turnAlignTimer:0,manualSteerHold:0,laneSide:1,wasOnJunction:!1,crossroad:null,car:{x:0,y:0,z:0,heading:0,pitch:0,roll:0,speed:22,steerAngle:0,wheelSpin:0,suspBob:0,accelPitch:0,steerRoll:0,braking:!1,offRoad:!1,surface:"road",colliding:!1,collisionFlashTimer:0,distanceMeters:0},traffic:[],pedestrians:[],cam:{x:0,y:3.5,z:10,lookX:0,lookY:1,lookZ:-20}},carLocation={kind:"edge",edge:null,edgePosition:0,junction:null,entryHeading:0,fromEdge:null,fromEnd:null,lastJunction:null,lastJunctionTime:-1/0,lastIntent:0};

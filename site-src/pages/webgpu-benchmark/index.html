@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>WebGPU vs WebGL Benchmark — Test Draw-Call Performance in Your Browser | gpuengine</title>
+<meta name="description" content="Free online WebGPU vs WebGL2 benchmark. Draw thousands of objects with both APIs, with and without instancing, and compare CPU time per frame and FPS on your own GPU.">
+<meta property="og:title" content="WebGPU vs WebGL Benchmark — Test Your Browser and GPU">
+<meta property="og:description" content="Compare WebGPU and WebGL2 draw-call performance on your own machine in about a minute.">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="/site/tool-page.css">
+<script type="importmap">{ "imports": { "lit": "/site/vendor/lit-core-3.2.1.min.js" } }</script>
+<link rel="modulepreload" href="/site/vendor/lit-core-3.2.1.min.js">
+<script type="module" src="/site/webgpu-benchmark/app/benchmark_workbench.js"></script>
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "WebGPU vs WebGL Benchmark",
+    "url": "{{canonical}}",
+    "description": "An in-browser benchmark that draws the same scene with WebGPU and WebGL2 and measures CPU time per frame and frames per second.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "browserRequirements": "Requires WebGL2 and WebGPU.",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Tools", "item": "{{origin}}/site/tools/" },
+      { "@type": "ListItem", "position": 2, "name": "WebGPU vs WebGL Benchmark", "item": "{{canonical}}" }
+    ]
+  }
+]
+</script>
+</head>
+<body class="tool-page">
+{{include header.html}}
+<main id="main" class="tool-main">
+  <div class="tool-intro">
+    <nav class="tool-breadcrumbs" aria-label="Breadcrumb"><a href="/site/tools/">Tools</a><span class="tool-breadcrumb-separator" aria-hidden="true">›</span></nav>
+    <h1 class="tool-title"><span class="tool-icon" aria-hidden="true">fps</span>WebGPU vs WebGL Benchmark</h1>
+    <p class="tool-tagline">Draw the same scene with both APIs, per object and instanced, and compare them on your own browser and GPU. A full run takes about a minute.</p>
+    <button class="tool-about-button" type="button" popovertarget="tool-about">About this tool</button>
+  </div>
+
+  <benchmark-workbench class="tool-app"></benchmark-workbench>
+  <noscript><p class="tool-noscript">The benchmark needs JavaScript, WebGL2 and WebGPU.</p></noscript>
+
+  <section id="tool-about" class="tool-about" popover aria-labelledby="tool-about-heading">
+    <button class="tool-about-close" type="button" popovertarget="tool-about" popovertargetaction="hide" aria-label="Close">×</button>
+    <h2 id="tool-about-heading">What this benchmark measures</h2>
+    <p>Every mode draws the same scene: a number of small coloured quads, each with its own position, size and colour, animated every frame. Two numbers matter:</p>
+    <ul>
+      <li><strong>CPU ms</strong> is the JavaScript time spent uploading data, recording commands and submitting one frame, measured with <code>performance.now()</code>. <strong>Upload ms</strong> is the part of it spent copying per-object data into a GPU buffer.</li>
+      <li><strong>FPS</strong> is the number of measured frames divided by the time between their <code>requestAnimationFrame</code> callbacks. Most screens cap this at 60.</li>
+    </ul>
+
+    <h3>The four modes</h3>
+    <table class="support-table">
+      <thead><tr><th>Mode</th><th>How each frame is drawn</th></tr></thead>
+      <tbody>
+        <tr><td>WebGL2, per object</td><td>One <code>uniform4fv</code> call and one <code>drawArrays</code> call for every object.</td></tr>
+        <tr><td>WebGPU, per object</td><td>One <code>writeBuffer</code> for all objects, then a dynamic-offset <code>setBindGroup</code> and a <code>draw</code> for every object.</td></tr>
+        <tr><td>WebGL2, instanced</td><td>All object data in one buffer, drawn with a single instanced call.</td></tr>
+        <tr><td>WebGPU, instanced</td><td>All object data in a storage buffer, drawn with a single instanced call.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>How to read your results</h3>
+    <p>Compare modes within the same object count, not across browsers or machines. If one draw call per object is much slower than instancing in both APIs, that is the cost of issuing draw calls, and the reason games batch their objects. If WebGPU per object stays fast at large counts but FPS drops, the browser's GPU process has become the bottleneck rather than your JavaScript.</p>
+    <p>Our own results from an Apple M1 Pro, and why they look the way they do, are in the article <a href="/site/articles/webgpu-vs-webgl/">WebGPU vs WebGL: real numbers</a>.</p>
+
+    <h3>Tips for fair numbers</h3>
+    <ul>
+      <li>Close other tabs and plug laptops into power, so the CPU does not slow down to save battery.</li>
+      <li>Run the benchmark two or three times. The first run includes shader compilation and warm-up.</li>
+      <li>Keep this tab visible while it runs. Browsers slow down background tabs.</li>
+      <li>Timers are rounded to about 0.1 ms for privacy, so very small numbers are approximate.</li>
+      <li>Add <code>?autorun&amp;counts=1000,20000&amp;frames=200</code> to the address to start a run straight away; results are also on <code>window.benchmarkResults</code>.</li>
+    </ul>
+
+    <h3>Questions</h3>
+    <dl class="tool-faq">
+      <dt>Why does the benchmark say WebGPU is not available?</dt>
+      <dd>WebGPU needs a recent Chrome, Edge or Safari, or Firefox on Windows, and a supported GPU. The WebGL2 modes still need WebGL2. See <a href="/site/tutorials/webgpu-intro/">What is WebGPU?</a> for browser support.</dd>
+      <dt>Is WebGPU always faster than WebGL?</dt>
+      <dd>No. WebGPU removes a lot of driver work, but for simple scenes with many tiny draw calls WebGL2 can use less JavaScript time. The big win in both APIs is drawing many objects with one call, which this benchmark shows with the instanced modes.</dd>
+      <dt>Is any data sent anywhere?</dt>
+      <dd>No. The benchmark runs entirely in your browser and the results stay on this page.</dd>
+    </dl>
+  </section>
+</main>
+</body>
+</html>

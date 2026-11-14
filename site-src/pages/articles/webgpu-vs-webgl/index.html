@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>WebGPU vs WebGL: Real Numbers | gpuengine Articles</title>
+<meta name="description" content="A reproducible draw-call benchmark run in Chrome on an M1 Pro: WebGL2 vs WebGPU at 1,000 to 50,000 draws, what got faster, what did not, and why.">
+<meta property="og:title" content="WebGPU vs WebGL: Real Numbers">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2026-11-02">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "WebGPU vs WebGL: Real Numbers",
+    "description": "A small, reproducible benchmark comparing per-object and instanced drawing in WebGL2 and WebGPU, with measured CPU time and frame rate.",
+    "datePublished": "2026-11-02",
+    "author": { "@type": "Person", "name": "Abhishek Sengar" },
+    "publisher": { "@type": "Organization", "name": "gpuengine", "url": "{{origin}}/" },
+    "url": "{{canonical}}",
+    "image": "{{origin}}/site/media/articles/webgpu-vs-webgl-benchmark.jpg"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Articles", "item": "{{origin}}/site/articles/" },
+      { "@type": "ListItem", "position": 2, "name": "WebGPU vs WebGL: real numbers", "item": "{{canonical}}" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+{{include header.html}}
+<main id="main">
+  <article class="article">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/articles/">Articles</a> / WebGPU</nav>
+    <h1>WebGPU vs WebGL: real numbers</h1>
+    <p class="article-meta"><time datetime="2026-11-02">2 November 2026</time><span>11 min read</span><span>WebGPU · WebGL · Performance</span></p>
+
+    <p class="article-lead">"WebGPU is faster than WebGL" gets repeated a lot, usually without numbers. So I wrote a small benchmark that draws the same scene both ways, ran it, and wrote down what came out. Some of it matched the folklore. Some of it did not: on my machine, thousands of separate WebGPU draw calls cost <em>more</em> JavaScript time than WebGL2, and at 50,000 draws WebGPU was the one that dropped frames.</p>
+
+    <nav class="article-toc" aria-label="Contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#scope">What this compares, and what it does not</a></li>
+        <li><a href="#benchmark">The benchmark</a></li>
+        <li><a href="#method">Machine and method</a></li>
+        <li><a href="#results">Results</a></li>
+        <li><a href="#javascript">Why WebGPU's JavaScript time is not lower</a></li>
+        <li><a href="#frames">Why 50,000 WebGPU draws ran at 43 fps</a></li>
+        <li><a href="#instancing">What instancing changes</a></li>
+        <li><a href="#differences">Differences a frame time cannot show</a></li>
+        <li><a href="#caveats">How far to trust these numbers</a></li>
+      </ol>
+    </nav>
+
+    <h2 id="scope">What this compares, and what it does not</h2>
+    <p>The games on this site, including <a href="/site/games/city-drive/">City Drive</a>, are WebGPU only. There is no WebGL version of any of them, so comparing them would mean comparing against something imaginary. Instead, this is a micro-benchmark of one thing that both APIs do and that people argue about: issuing lots of small draw calls, each with its own data.</p>
+    <p>That is the classic "draw call overhead" question. It is not a test of shader speed, fill rate or memory bandwidth. The GPU work here is deliberately tiny, so any difference comes from the cost of telling the GPU what to do.</p>
+    <p>You can <a href="/site/webgpu-benchmark/">run the benchmark yourself</a>. It runs right here on the site with no install, and it also exposes its results on <code>window.benchmarkResults</code>.</p>
+
+    <figure class="article-figure">
+      <img src="/site/media/articles/webgpu-vs-webgl-benchmark.jpg" alt="The benchmark page after a run, with a results table listing the four modes at 1,000, 10,000 and 50,000 objects, their CPU time, upload time and frames per second" width="980" height="800" loading="lazy">
+      <figcaption>The benchmark page after one run on the machine described below. This was a separate, fifth run made for the screenshot, so its numbers are close to the table below but not part of it.</figcaption>
+    </figure>
+
+    <h2 id="benchmark">The benchmark</h2>
+    <p>Every mode draws N small coloured quads at random positions on a 512 × 512 canvas. Each quad has eight floats of its own: an offset, a size and a colour. Every frame, JavaScript moves every quad slightly, so the per-object data really does change each frame. There are four modes:</p>
+    <table class="reference-table">
+      <thead><tr><th>Mode</th><th>Per frame</th><th>Draw calls</th></tr></thead>
+      <tbody>
+        <tr><td>WebGL2, per object</td><td>One <code>uniform4fv</code> and one <code>drawArrays</code> per quad</td><td>N</td></tr>
+        <tr><td>WebGPU, per object</td><td>One <code>writeBuffer</code>, then one <code>setBindGroup</code> with a dynamic offset and one <code>draw</code> per quad</td><td>N</td></tr>
+        <tr><td>WebGL2, instanced</td><td>One <code>bufferSubData</code> and one <code>drawArraysInstanced</code></td><td>1</td></tr>
+        <tr><td>WebGPU, instanced</td><td>One <code>writeBuffer</code> to a storage buffer and one <code>draw</code> with N instances</td><td>1</td></tr>
+      </tbody>
+    </table>
+    <p>The per-object loops are the heart of it. In WebGL2, each quad's eight floats go straight into a <code>uniform vec4 objectData[2]</code> array:</p>
+<pre><code data-language="js">function drawEachObject() {
+  const { objects, objectCount } = scene;
+  for (let index = 0; index &lt; objectCount; index++) {
+    gl.uniform4fv(objectDataLocation, objects, index * FLOATS_PER_OBJECT, FLOATS_PER_OBJECT);
+    gl.drawArrays(gl.TRIANGLES, 0, VERTICES_PER_QUAD);
+  }
+}</code></pre>
+    <p>WebGPU has no per-draw uniform call: a <code>queue.writeBuffer</code> takes effect before the whole submitted pass, not between two draws. The idiomatic equivalent is to upload all objects into one uniform buffer before the pass, then point the bind group at a different slice for each draw with a dynamic offset. Uniform buffer offsets must be multiples of 256 bytes (<code>minUniformBufferOffsetAlignment</code> on this adapter), so each 32-byte object gets a 256-byte slot.</p>
+<pre><code data-language="js">function recordDraws(pass) {
+  pass.setPipeline(pipeline);
+  pass.setVertexBuffer(0, cornerBuffer);
+  if (isInstanced) {
+    pass.setBindGroup(0, bindGroup);
+    pass.draw(VERTICES_PER_QUAD, scene.objectCount);
+    return;
+  }
+  for (let index = 0; index &lt; scene.objectCount; index++) {
+    pass.setBindGroup(0, bindGroup, dynamicOffsets, index, 1);
+    pass.draw(VERTICES_PER_QUAD);
+  }
+}</code></pre>
+    <p>The loop uses the <code>setBindGroup</code> overload that takes a <code>Uint32Array</code> plus a start and length, so it does not allocate a new offsets array for each of the 50,000 calls. The WebGL2 loop is just as lean: <code>uniform4fv</code> with a source offset reads straight from the shared <code>Float32Array</code>.</p>
+    <p>The instanced modes are there as a control. They draw the identical picture with one call, so they show what the same workload costs when draw calls are taken out of the equation.</p>
+
+    <h2 id="method">Machine and method</h2>
+    <p>Everything below was measured on one machine, read from the browser itself where possible:</p>
+    <table class="reference-table">
+      <thead><tr><th>Item</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Computer</td><td>Apple M1 Pro, 16 GB, macOS 27.0.1</td></tr>
+        <tr><td>Browser</td><td>Chrome 157.0.8103.38, headless (<code>--headless=new --enable-unsafe-webgpu</code>)</td></tr>
+        <tr><td><code>adapter.info</code></td><td>vendor "apple", architecture "metal-3" (device and description empty)</td></tr>
+        <tr><td>WebGL renderer</td><td>ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Pro, Unspecified Version)</td></tr>
+        <tr><td><code>navigator.userAgent</code></td><td>Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) … HeadlessChrome/157.0.0.0 Safari/537.36</td></tr>
+      </tbody>
+    </table>
+    <p>Both APIs end up on Metal: WebGL2 through ANGLE, WebGPU through Dawn. The user agent string's "Intel Mac OS X 10_15_7" is Chrome's frozen value, not the real OS.</p>
+    <p>Each mode runs on a fresh canvas, one after another, in a <code>requestAnimationFrame</code> loop: 20 warm-up frames, then 120 measured frames. For each frame the page records:</p>
+    <ul>
+      <li><strong>JavaScript time:</strong> <code>performance.now()</code> around uploading, recording and submitting the frame. Moving the quads is done before the timer starts and is identical for every mode.</li>
+      <li><strong>Upload time:</strong> the part of that spent in <code>writeBuffer</code> or <code>bufferSubData</code>.</li>
+      <li><strong>Frames per second:</strong> measured frames divided by the time between their animation-frame timestamps.</li>
+    </ul>
+    <p>I ran the full set (three object counts, four modes) four times, driving Chrome over the DevTools protocol and reading <code>window.benchmarkResults</code>. The page is not cross-origin isolated, so Chrome reported <code>performance.now()</code> in 0.1 ms steps. I quote the mean of each run's 120 frames, which averages that rounding out; the benchmark page also shows medians and 95th percentiles.</p>
+
+    <h2 id="results">Results</h2>
+    <p>Ranges are the lowest and highest of the four runs. Frame rate was capped at 60 by the display loop, so "60" means "kept up", not "60 is the limit of the API".</p>
+    <table class="reference-table">
+      <thead><tr><th>Objects</th><th>Mode</th><th>JavaScript ms per frame</th><th>of which upload</th><th>FPS</th></tr></thead>
+      <tbody>
+        <tr><td>1,000</td><td>WebGL2, per object</td><td>0.16–0.45</td><td>none</td><td>60</td></tr>
+        <tr><td>1,000</td><td>WebGPU, per object</td><td>0.40–0.91</td><td>0.17–0.38</td><td>60</td></tr>
+        <tr><td>1,000</td><td>WebGL2, instanced</td><td>0.03–0.05</td><td>0.01–0.02</td><td>60</td></tr>
+        <tr><td>1,000</td><td>WebGPU, instanced</td><td>0.14–0.36</td><td>0.04–0.09</td><td>60</td></tr>
+        <tr><td>10,000</td><td>WebGL2, per object</td><td>0.87–1.31</td><td>none</td><td>60</td></tr>
+        <tr><td>10,000</td><td>WebGPU, per object</td><td>1.69–1.85</td><td>0.87–0.96</td><td>60</td></tr>
+        <tr><td>10,000</td><td>WebGL2, instanced</td><td>0.07–0.09</td><td>0.04–0.05</td><td>60</td></tr>
+        <tr><td>10,000</td><td>WebGPU, instanced</td><td>0.35–0.52</td><td>0.23–0.37</td><td>60</td></tr>
+        <tr><td>50,000</td><td>WebGL2, per object</td><td>4.89–5.01</td><td>none</td><td>60</td></tr>
+        <tr><td>50,000</td><td>WebGPU, per object</td><td>3.96–4.11</td><td>0.33</td><td>43.0–43.3</td></tr>
+        <tr><td>50,000</td><td>WebGL2, instanced</td><td>0.08–0.12</td><td>0.06–0.09</td><td>60</td></tr>
+        <tr><td>50,000</td><td>WebGPU, instanced</td><td>0.83–1.38</td><td>0.78–1.30</td><td>60</td></tr>
+      </tbody>
+    </table>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 800 430" role="img" aria-labelledby="results-svg-title" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+        <title id="results-svg-title">Bar chart of mean JavaScript time per frame. 1,000 objects: WebGL2 per object 0.27 ms, WebGPU per object 0.62, WebGL2 instanced 0.04, WebGPU instanced 0.25. 10,000: 1.18, 1.79, 0.08, 0.44. 50,000: 4.95, 4.05 at 43 fps, 0.11, 1.08.</title>
+        <g stroke="currentColor" stroke-opacity="0.15">
+          <line x1="60" y1="360" x2="780" y2="360" stroke-opacity="0.5"/>
+          <line x1="60" y1="300" x2="780" y2="300"/>
+          <line x1="60" y1="240" x2="780" y2="240"/>
+          <line x1="60" y1="180" x2="780" y2="180"/>
+          <line x1="60" y1="120" x2="780" y2="120"/>
+          <line x1="60" y1="60" x2="780" y2="60"/>
+        </g>
+        <g fill="currentColor" fill-opacity="0.7" text-anchor="end">
+          <text x="52" y="364">0</text>
+          <text x="52" y="304">1</text>
+          <text x="52" y="244">2</text>
+          <text x="52" y="184">3</text>
+          <text x="52" y="124">4</text>
+          <text x="52" y="64">5 ms</text>
+        </g>
+        <g>
+          <rect x="100" y="343.8" width="36" height="16.2" fill="currentColor" fill-opacity="0.45"/>
+          <rect x="142" y="322.8" width="36" height="37.2" style="fill: var(--accent)"/>
+          <rect x="184" y="357.6" width="36" height="2.4" fill="currentColor" fill-opacity="0.2"/>
+          <rect x="226" y="345" width="36" height="15" style="fill: var(--accent)" fill-opacity="0.45"/>
+          <rect x="340" y="289.2" width="36" height="70.8" fill="currentColor" fill-opacity="0.45"/>
+          <rect x="382" y="252.6" width="36" height="107.4" style="fill: var(--accent)"/>
+          <rect x="424" y="355.2" width="36" height="4.8" fill="currentColor" fill-opacity="0.2"/>
+          <rect x="466" y="333.6" width="36" height="26.4" style="fill: var(--accent)" fill-opacity="0.45"/>
+          <rect x="580" y="63" width="36" height="297" fill="currentColor" fill-opacity="0.45"/>
+          <rect x="622" y="117" width="36" height="243" style="fill: var(--accent)"/>
+          <rect x="664" y="353.4" width="36" height="6.6" fill="currentColor" fill-opacity="0.2"/>
+          <rect x="706" y="295.2" width="36" height="64.8" style="fill: var(--accent)" fill-opacity="0.45"/>
+        </g>
+        <g fill="currentColor" text-anchor="middle" font-size="11">
+          <text x="118" y="337">0.27</text>
+          <text x="160" y="316">0.62</text>
+          <text x="202" y="351">0.04</text>
+          <text x="244" y="339">0.25</text>
+          <text x="358" y="283">1.18</text>
+          <text x="400" y="246">1.79</text>
+          <text x="442" y="349">0.08</text>
+          <text x="484" y="327">0.44</text>
+          <text x="598" y="57">4.95</text>
+          <text x="640" y="111">4.05</text>
+          <text x="640" y="97" style="fill: var(--accent)">43 fps</text>
+          <text x="682" y="347">0.11</text>
+          <text x="724" y="289">1.08</text>
+        </g>
+        <g fill="currentColor" text-anchor="middle" font-size="13">
+          <text x="181" y="385">1,000 objects</text>
+          <text x="421" y="385">10,000 objects</text>
+          <text x="661" y="385">50,000 objects</text>
+        </g>
+        <g font-size="12" fill="currentColor">
+          <rect x="70" y="404" width="14" height="14" fill="currentColor" fill-opacity="0.45"/>
+          <text x="90" y="415">WebGL2 per object</text>
+          <rect x="250" y="404" width="14" height="14" style="fill: var(--accent)"/>
+          <text x="270" y="415">WebGPU per object</text>
+          <rect x="430" y="404" width="14" height="14" fill="currentColor" fill-opacity="0.2"/>
+          <text x="450" y="415">WebGL2 instanced</text>
+          <rect x="600" y="404" width="14" height="14" style="fill: var(--accent)" fill-opacity="0.45"/>
+          <text x="620" y="415">WebGPU instanced</text>
+        </g>
+      </svg>
+      <figcaption>Mean JavaScript time per frame, averaged over the four runs. Every mode held 60 fps except WebGPU per object at 50,000 draws.</figcaption>
+    </figure>
+
+    <p>Three things stand out:</p>
+    <ol>
+      <li>With one draw per object, WebGL2 spent <strong>less</strong> JavaScript time than WebGPU at 1,000 and 10,000 objects.</li>
+      <li>At 50,000, WebGPU's JavaScript time was about 18% lower, yet it was the only mode that could not hold 60 fps.</li>
+      <li>Instancing beat every per-object mode by a wide margin in both APIs, and WebGL2 instancing had the lowest JavaScript time of all.</li>
+    </ol>
+    <p>None of that says WebGPU is slow. It says the cost of a draw call does not live where you would guess, and that <code>performance.now()</code> around your render function measures only the part you can see.</p>
+
+    <h2 id="javascript">Why WebGPU's JavaScript time is not lower</h2>
+    <p>The upload column explains a lot of it. Because of the 256-byte alignment, the WebGPU per-object mode writes 256 bytes per object: 2.56 MB a frame at 10,000 objects, for 320 KB of actual data. That <code>writeBuffer</code> alone took 0.87–0.96 ms, about half the frame's JavaScript time. WebGL2 has no separate upload at all; its 32 bytes per object travel inside each <code>uniform4fv</code> call.</p>
+    <p>Take the upload away and the per-draw cost is close. At 50,000 objects, WebGPU's remaining 3.7 ms works out at roughly 75 ns per <code>setBindGroup</code> plus <code>draw</code>, against roughly 100 ns per <code>uniform4fv</code> plus <code>drawArrays</code> in WebGL2. Those are averages of a whole frame divided by the number of objects, not a measurement of a single call.</p>
+    <p>The upload numbers are not tidy. Writing 12.8 MB at 50,000 objects took 0.33 ms in every run, less than the 2.56 MB write at 10,000. I do not have an explanation I can back up, so I am reporting it as measured rather than guessing at Chrome's internals.</p>
+    <p>WebGPU also has a fixed cost per frame that does not show up in WebGL2's JavaScript time. Each frame calls <code>getCurrentTexture()</code>, creates a view, a command encoder and a render pass, then finishes and submits. You can see it in the instanced rows: at 1,000 objects, with only a tiny upload, WebGPU spent 0.14–0.36 ms against WebGL2's 0.03–0.05 ms. That is small in absolute terms, but it is there in every frame.</p>
+    <p>If the dynamic-offset upload bothers you, there are other designs. A storage buffer indexed by <code>instance_index</code>, with each draw passing its object number as <code>firstInstance</code>, avoids the padding. I benchmarked the common textbook pattern, not the cleverest one.</p>
+
+    <h2 id="frames">Why 50,000 WebGPU draws ran at 43 fps</h2>
+    <p>At 50,000 objects, WebGPU spent about 4 ms of JavaScript per frame, a quarter of a 60 fps budget, and still ran at 43 fps. Something other than JavaScript was the bottleneck.</p>
+    <p>In Chrome, neither API talks to the GPU from the page's thread. WebGL calls are put into a command buffer and executed by ANGLE in the separate GPU process. WebGPU calls are serialised by the page and replayed by Dawn in the GPU process, which validates them and translates them to Metal. So I recorded three-second Chrome traces while each mode was running and added up how busy the GPU process's main thread was:</p>
+    <table class="reference-table">
+      <thead><tr><th>Mode</th><th>Objects</th><th>GPU process main thread busy</th><th>Page main thread busy</th></tr></thead>
+      <tbody>
+        <tr><td>WebGL2, per object</td><td>10,000</td><td>20.8%</td><td>10.3%</td></tr>
+        <tr><td>WebGPU, per object</td><td>10,000</td><td>32.9%</td><td>15.4%</td></tr>
+        <tr><td>WebGL2, per object</td><td>50,000</td><td>54.5%</td><td>36.2%</td></tr>
+        <tr><td>WebGPU, per object</td><td>50,000</td><td>99.6%</td><td>29.6%</td></tr>
+        <tr><td>WebGL2, instanced</td><td>50,000</td><td>7.1%</td><td>21.8%</td></tr>
+        <tr><td>WebGPU, instanced</td><td>50,000</td><td>4.7%</td><td>21.3%</td></tr>
+      </tbody>
+    </table>
+    <p>These come from one trace per row, so treat them as indicative. The picture is still clear: at 50,000 draws, the GPU process was busy for 99.6% of the time with WebGPU, and the frame rate was capped by how fast it could get through 100,000 commands a frame. WebGL2 needed about half of that thread for the same scene. In the instanced rows, much of the page's main-thread time goes on moving 50,000 quads in JavaScript, which happens outside the timed section.</p>
+    <p>To check that the 12.8 MB upload was not the real culprit, I ran a modified copy of the page that skipped <code>writeBuffer</code> in the WebGPU per-object mode. It drew nothing useful, since the buffer was never filled, but in a single run it gave 3.7 ms of JavaScript, 47 fps and a GPU process still 99.8% busy. The upload costs a few frames per second; the per-draw work in the GPU process is the wall.</p>
+    <p>This is the honest version of "WebGPU has lower draw-call overhead". WebGPU moves validation out of the draw call: pipelines and bind groups are checked when you create them, so each <code>draw</code> has less to check than a WebGL call that must look at the whole global state. But in a browser every command still crosses a process boundary and gets checked for safety on the other side. On this machine and Chrome build, that path was more expensive per draw for WebGPU than for WebGL2.</p>
+
+    <h2 id="instancing">What instancing changes</h2>
+    <p>Both instanced modes drew all 50,000 quads in a single call, held 60 fps easily, and left the GPU process mostly idle. WebGPU instancing at 50,000 objects cost about a fifth of the JavaScript time of WebGL2 per-object drawing at the same count, and most of that was the upload.</p>
+    <p>That is the real lesson of this benchmark, and it applies to both APIs: the fastest draw call is the one you do not make. If thousands of objects share a mesh and a pipeline, put their data in a buffer and draw them together. City Drive draws its trees this way, with one instanced draw per species and level of detail. The <a href="/site/tutorials/instancing/">instancing tutorial</a> shows how.</p>
+
+    <h2 id="differences">Differences a frame time cannot show</h2>
+    <p>If draw-call speed is not a clear win, why use WebGPU at all? Because most of its advantages are about what you can do, not how fast you can make many small calls. The <a href="/site/tutorials/webgpu-intro/">WebGPU introduction</a> covers them properly; briefly:</p>
+    <ul>
+      <li><strong>Compute shaders.</strong> WebGL2 has none. You can fake general GPU work with fragment shaders and render-to-texture, but WebGPU gives you storage buffers, workgroups, atomics and dispatches directly. The <a href="/site/articles/gpu-text-search/">GPU text search</a> on this site would be awkward in WebGL2.</li>
+      <li><strong>WGSL instead of GLSL.</strong> WGSL is a new language with explicit types, explicit bindings (<code>@group(0) @binding(0)</code>) and the same source on every platform, translated by the browser to Metal, HLSL or SPIR-V. GLSL ES 3.00 is older and familiar, but its uniforms are looked up by name at run time.</li>
+      <li><strong>Explicit pipelines.</strong> In WebGL, blending, depth testing, shaders and vertex layout are global switches you flip before each draw. In WebGPU they are baked into an immutable <code>GPURenderPipeline</code> created up front, and resources are grouped into bind groups. That is more code at start-up and less guessing for the driver while drawing.</li>
+      <li><strong>Command buffers.</strong> WebGPU records work into command encoders and submits finished command buffers to a queue, so you decide when work is handed over. WebGL has no command buffers you can see: each call is an instruction to the context, and the browser batches them behind your back.</li>
+      <li><strong>Errors.</strong> WebGL reports through <code>gl.getError()</code>, which you poll. WebGPU validates every call, reports through error scopes and the <code>uncapturederror</code> event, and an invalid object makes every later call that uses it fail validation too, rather than silently doing something undefined. The messages are much better.</li>
+    </ul>
+
+    <section class="article-takeaways" aria-labelledby="takeaways-heading">
+      <h2 id="takeaways-heading">Key takeaways</h2>
+      <ul>
+        <li>On an M1 Pro in Chrome 157, WebGL2 used less JavaScript time than WebGPU for 1,000 and 10,000 separate draws.</li>
+        <li>At 50,000 separate draws, WebGPU used less JavaScript time but ran at 43 fps, because Chrome's GPU process was saturated.</li>
+        <li>Timing your render function measures only the page's share. Check the frame rate, and a trace, before drawing conclusions.</li>
+        <li>WebGPU's 256-byte uniform offset alignment makes the dynamic-offset pattern upload eight times more data than it uses here.</li>
+        <li>Instancing beat per-object drawing in both APIs by far more than either API beat the other.</li>
+        <li>Choose WebGPU for compute, WGSL, explicit pipelines and better errors, not on the assumption that every draw call is cheaper.</li>
+      </ul>
+    </section>
+
+    <h2 id="caveats">How far to trust these numbers</h2>
+    <p>Not too far. This is one machine, one browser build and one operating system, in headless mode, with the frame rate tied to a 60 Hz animation loop. A Windows PC with Direct3D underneath, a different GPU, a future Chrome build or Firefox and Safari could all change the picture, and Dawn and ANGLE both get faster over time.</p>
+    <p>The workload is also deliberately unrealistic. Real scenes change pipelines, textures and buffers between draws, which costs WebGL more state work and is where WebGPU's pre-validated pipelines and bind groups should help most. This benchmark changes almost nothing between draws, which is WebGL2's best case.</p>
+    <p>And it measures CPU-side cost only. I did not measure GPU execution time, and the GPU process numbers come from one trace per mode.</p>
+    <p>That is exactly why the benchmark is public. <a href="/site/webgpu-benchmark/">Run it on your machine</a>, change the object counts in the box at the top, and you will get your own table in a minute or two. If your numbers disagree with mine, believe yours.</p>
+
+    {{official-links}}
+
+    <nav class="article-pager" aria-label="More articles">
+      <a href="/site/articles/sun-shadows/" rel="prev"><small>Previous article</small>Sun shadows, explained</a>
+      <a href="/site/articles/gpu-text-search/" rel="next"><small>Next article</small>Searching text with a compute shader</a>
+    </nav>
+  </article>
+</main>
+{{include footer.html}}
+</body>
+</html>

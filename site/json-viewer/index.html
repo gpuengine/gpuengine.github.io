@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://gpuengine.github.io/site/json-viewer/">
+<meta property="og:url" content="https://gpuengine.github.io/site/json-viewer/">
+<meta property="og:site_name" content="gpuengine">
+<meta property="og:image" content="https://gpuengine.github.io/site/media/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<script src="/site/site.js" defer></script>
+<script src="/site/code-highlight.js" defer></script>
+
+<title>JSON Viewer &amp; Editor — Format, Validate and Search Large JSON Online | gpuengine</title>
+<meta name="description" content="Free online JSON viewer and editor. Paste or open JSON to validate, format, minify, fold nodes and search keys and values. Handles very large files in your browser with WebGPU-powered search.">
+<meta property="og:title" content="JSON Viewer &amp; Editor — Fast, Private, Handles Large Files">
+<meta property="og:description" content="Validate, format, explore and search JSON of any size right in your browser. Nothing is uploaded.">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="/site/tool-page.css">
+<script type="importmap">{ "imports": { "lit": "/site/vendor/lit-core-3.2.1.min.js" } }</script>
+<link rel="modulepreload" href="/site/vendor/lit-core-3.2.1.min.js">
+<script type="module" src="/site/json-viewer/app/json_workbench.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "JSON Viewer & Editor",
+  "url": "https://gpuengine.github.io/site/json-viewer/",
+  "description": "A free in-browser JSON viewer and editor that validates, formats, folds and searches very large JSON documents without uploading them.",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Any",
+  "browserRequirements": "Requires JavaScript. Search requires WebGPU.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Tools", "item": "https://gpuengine.github.io/site/tools/" },
+    { "@type": "ListItem", "position": 2, "name": "JSON Viewer & Editor", "item": "https://gpuengine.github.io/site/json-viewer/" }
+  ]
+}
+</script>
+</head>
+<body class="tool-page">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/site/tutorials/" data-nav-section>Tutorials</a>
+    <a href="/site/articles/" data-nav-section>Articles</a>
+    <a href="/site/games/" data-nav-section>Games</a>
+    <a href="/site/tools/" data-nav-section>Tools</a>
+    <a class="site-nav-cta" href="/site/wgpu3d/" data-nav-section>wgpu3d</a>
+    <a class="site-nav-about" href="/site/about/" data-nav-section><svg class="site-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.42 0-8 2.24-8 5v2h16v-2c0-2.76-3.58-5-8-5Z"/></svg>About</a>
+  </nav>
+</header>
+
+<main id="main" class="tool-main">
+  <div class="tool-intro">
+    <nav class="tool-breadcrumbs" aria-label="Breadcrumb"><a href="/site/tools/">Tools</a><span class="tool-breadcrumb-separator" aria-hidden="true">›</span></nav>
+    <h1 class="tool-title"><span class="tool-icon" aria-hidden="true">{ }</span>JSON Viewer &amp; Editor</h1>
+    <p class="tool-tagline">Paste JSON on the left, then explore, fold and search it on the right. Your data never leaves the browser.</p>
+    <button class="tool-about-button" type="button" popovertarget="tool-about">About this tool</button>
+  </div>
+
+  <json-workbench class="tool-app"></json-workbench>
+  <noscript><p class="tool-noscript">The JSON viewer needs JavaScript. Enable it to paste and explore JSON.</p></noscript>
+
+  <section id="tool-about" class="tool-about" popover aria-labelledby="tool-about-heading">
+    <button class="tool-about-close" type="button" popovertarget="tool-about" popovertargetaction="hide" aria-label="Close">×</button>
+    <h2 id="tool-about-heading">A JSON viewer that stays fast on large files</h2>
+    <p>This free online JSON viewer and editor checks, formats and explores JSON straight in your browser. Paste JSON into the input on the left, open a <code>.json</code> file, or drop one onto the page. The right side shows the document as a formatted tree you can fold, unfold, search and edit.</p>
+
+    <h3>What you can do</h3>
+    <ul>
+      <li><strong>Validate JSON</strong>: syntax errors are reported with the exact line and column, and <em>Go to error</em> jumps the cursor there.</li>
+      <li><strong>Format and minify</strong>: pretty-print with two-space indentation, or strip all whitespace. Numbers and strings are kept exactly as written, so large integers do not lose precision.</li>
+      <li><strong>Collapse and expand nodes</strong>: fold any object or array, or use <em>Expand all</em> and <em>Collapse all</em>. Collapsed nodes show how many keys or items they hold.</li>
+      <li><strong>Search keys and values</strong>: find text in keys, values or both, with optional case matching. Matches inside folded nodes are revealed automatically.</li>
+      <li><strong>Edit in place</strong>: double-click a key or value in the tree to change it. The input on the left updates to match.</li>
+      <li><strong>Copy any key or value</strong>: hover a row (or tap it on a phone) and use <em>Copy key</em> or <em>Copy value</em>. Strings are copied as plain text, and objects and arrays as formatted JSON. The status bar shows the selected node's path, such as <code>$.books[2].title</code>, ready to copy.</li>
+      <li><strong>Long lines wrap</strong>: minified JSON pasted as one long line wraps in the input, so you never have to scroll sideways. Turn <em>Wrap</em> off for very large files to keep typing fast.</li>
+    </ul>
+
+    <h3>How it handles large JSON without freezing</h3>
+    <p>Parsing runs in a background Web Worker, so the page keeps responding while a large document is read. Instead of building millions of JavaScript objects, the parser records where each key and value sits in the original text in compact typed arrays. The tree only draws the rows on screen, so scrolling stays smooth with millions of nodes. Files too large to edit as text are kept out of the text box while the tree stays fully usable.</p>
+
+    <h3>Where WebGPU comes in</h3>
+    <p>Search runs on your graphics card. The document is copied to GPU memory once, and a WebGPU compute shader checks every position in the text in parallel, so search time barely grows with file size. Search needs a browser with WebGPU: recent Chrome, Edge or Safari, or Firefox on Windows. Viewing, formatting and editing work in any modern browser.</p>
+
+    <h3>Keyboard shortcuts</h3>
+    <table class="support-table">
+      <thead><tr><th>Key</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>F</kbd></td><td>Search the tree</td></tr>
+        <tr><td><kbd>Enter</kbd> / <kbd>Shift</kbd> + <kbd>Enter</kbd></td><td>Next / previous match</td></tr>
+        <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move the selection in the tree</td></tr>
+        <tr><td><kbd>→</kbd> / <kbd>←</kbd></td><td>Expand / collapse the selected node</td></tr>
+        <tr><td><kbd>Enter</kbd> in the tree</td><td>Edit the selected value</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Cancel an edit or clear the search</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Questions</h3>
+    <dl class="tool-faq">
+      <dt>Is my JSON uploaded anywhere?</dt>
+      <dd>No. Everything runs locally in your browser. Nothing you paste or open is sent to a server.</dd>
+      <dt>How large a file can it open?</dt>
+      <dd>Files of hundreds of megabytes work on a typical laptop. The limit is your device's memory, and for search, how much GPU memory the browser allows.</dd>
+      <dt>Why is search unavailable?</dt>
+      <dd>Search runs on WebGPU. If your browser or device does not support it, the search box says so; everything else still works.</dd>
+      <dt>Does formatting change my numbers?</dt>
+      <dd>No. The formatter copies numbers and strings exactly as they appear in your input instead of converting them through JavaScript numbers.</dd>
+    </dl>
+  </section>
+</main>
+</body>
+</html>

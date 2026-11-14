@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>WebGPU Depth Buffer — Depth Testing for 3D Scenes | WebGPU Tutorial</title>
+<meta name="description" content="Learn the WebGPU depth buffer: create a depth24plus depth texture, set depthStencil and depthCompare in the pipeline, and add a depthStencilAttachment. With runnable examples.">
+<meta property="og:title" content="WebGPU Depth Buffer — Depth Testing for 3D Scenes">
+<meta property="og:type" content="article">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "WebGPU Depth Buffer — Depth Testing for 3D Scenes",
+    "description": "How the depth buffer makes near objects hide far ones in WebGPU, with runnable examples.",
+    "proficiencyLevel": "Beginner",
+    "url": "{{canonical}}"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Tutorials", "item": "{{origin}}/site/tutorials/" },
+      { "@type": "ListItem", "position": 2, "name": "Depth buffer", "item": "{{canonical}}" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+{{include header.html}}
+<div class="doc">
+  {{include tutorial-sidebar.html}}
+  <main id="main">
+    <article>
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/tutorials/">Tutorials</a> / Going 3D</nav>
+      <h1>WebGPU <span class="lesson-title-accent">Depth Buffer</span></h1>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/camera-matrices/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/textures-samplers/" rel="next">Next ❯</a>
+      </nav>
+
+      <p class="lesson-intro">A <strong>depth buffer</strong> makes near objects hide far objects, no matter which one you draw first.</p>
+      <p>Without it, 3D scenes look broken. With it, the GPU sorts every pixel for you. It takes about ten lines of code.</p>
+
+      <figure class="example-demo">
+        <iframe src="/site/tutorials/examples/depth-cubes.html" title="Three rotating cubes that pass through each other, drawn with depth testing" loading="lazy"></iframe>
+        <figcaption>Three cubes that cut through each other. Only a depth buffer can draw this correctly.</figcaption>
+      </figure>
+
+      <h2>The Draw-Order Problem</h2>
+      <p>By default, WebGPU colours pixels in the order you draw. A later draw <strong>always covers</strong> an earlier one, even if it is further away.</p>
+      <p>The example below draws three cards. The big red card is near the camera, and the small blue card is far away. They are drawn near first, so the far cards are painted on top:</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Three cards at different depths, with no depth buffer:</p>
+<pre><code data-language="js">const cards = [
+  { centerX: -0.35, centerY: 0.2, size: 0.9, depth: 0.2, color: [0.95, 0.35, 0.35] },
+  { centerX: 0.0, centerY: 0.0, size: 0.7, depth: 0.5, color: [0.35, 0.85, 0.45] },
+  { centerX: 0.3, centerY: -0.15, size: 0.5, depth: 0.8, color: [0.35, 0.55, 0.95] }
+];</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=depth-off" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <p>The blue card should be hidden behind the others, but it is drawn last, so it wins.</p>
+      <p>You could sort objects from far to near before drawing. This is called the <dfn>painter's algorithm</dfn>. But sorting costs time, and it fails when objects cut through each other, like the cubes at the top of this page.</p>
+
+      <h2>What a Depth Buffer Stores</h2>
+      <p>A depth buffer is a texture the same size as the canvas. For each pixel, it stores <strong>one number: the depth of the nearest thing drawn so far</strong>.</p>
+      <p>When a new pixel arrives, the GPU compares its depth with the stored depth. This is the <dfn>depth test</dfn>:</p>
+      <ul>
+        <li>If the new pixel is <strong>nearer</strong>, it is drawn, and its depth is saved.</li>
+        <li>If it is <strong>further away</strong>, it is thrown away.</li>
+      </ul>
+      <p>The order you draw in no longer matters. The nearest surface always wins.</p>
+
+      <h2>Depth Values in WebGPU</h2>
+      <p>The depth comes from the <code>z</code> value of the position your vertex shader returns. After the divide by <code>w</code>, WebGPU keeps only <strong>z between 0 and 1</strong>:</p>
+      <table class="reference-table">
+        <thead><tr><th>Clip-space z</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>0.0</code></td><td>The near plane: as close as anything can be</td></tr>
+          <tr><td><code>1.0</code></td><td>The far plane: as far as anything can be</td></tr>
+          <tr><td>Below 0 or above 1</td><td>Clipped: not drawn at all</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-warning">
+        <strong>Warning</strong>
+        WebGL and OpenGL use z from -1 to 1. WebGPU uses 0 to 1. A perspective matrix copied from WebGL code will put half your scene behind the near plane. Use a WebGPU-style matrix, like the one in <a href="/site/tutorials/camera-matrices/">Camera &amp; matrices</a>.
+      </div>
+      <p>In the cards example, each vertex simply has a <code>z</code> of 0.2, 0.5 or 0.8, and the shader passes it straight through:</p>
+<pre><code data-language="wgsl">output.position = vec4f(position, 1.0);</code></pre>
+
+      <h2>Step 1: Create a Depth Texture</h2>
+      <p>The depth buffer is a texture. Create it with the same size as the canvas, a depth <strong>format</strong>, and the usage <code>RENDER_ATTACHMENT</code>:</p>
+<pre><code data-language="js">const depthFormat = "depth24plus";
+const depthTexture = device.createTexture({
+  size: [canvas.width, canvas.height],
+  format: depthFormat,
+  usage: GPUTextureUsage.RENDER_ATTACHMENT
+});</code></pre>
+      <p><code>depth24plus</code> gives at least 24 bits of precision. It is the usual choice.</p>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        The depth texture must be exactly the same size as the colour texture you draw into. If the canvas changes size, create a new depth texture too.
+      </div>
+
+      <h2>Step 2: Turn On Depth Testing in the Pipeline</h2>
+      <p>Add a <code>depthStencil</code> object to the pipeline. It tells the pipeline which format to expect and how to compare depths. Everything else in the pipeline stays the same:</p>
+<pre><code data-language="js">const pipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: {
+    module: shaderModule,
+    entryPoint: "vertexMain",
+    buffers: [{
+      arrayStride: FLOATS_PER_VERTEX * Float32Array.BYTES_PER_ELEMENT,
+      attributes: [
+        { shaderLocation: 0, offset: 0, format: "float32x3" },
+        { shaderLocation: 1, offset: 12, format: "float32x3" }
+      ]
+    }]
+  },
+  fragment: { module: shaderModule, entryPoint: "fragmentMain", targets: [{ format }] },
+  depthStencil: {
+    format: depthFormat,
+    depthWriteEnabled: true,
+    depthCompare: "less"
+  }
+});</code></pre>
+      <ul>
+        <li><code>depthWriteEnabled: true</code> saves the depth of every pixel that passes.</li>
+        <li><code>depthCompare: "less"</code> means a pixel passes if its depth is <strong>less than</strong> the stored depth, so nearer wins.</li>
+      </ul>
+
+      <h2>Step 3: Attach It to the Render Pass</h2>
+      <p>Finally, give the render pass a <code>depthStencilAttachment</code>, next to the colour attachment:</p>
+<pre><code data-language="js">const pass = encoder.beginRenderPass({
+  colorAttachments: [{
+    view: context.getCurrentTexture().createView(),
+    clearValue: { r: 0.05, g: 0.06, b: 0.07, a: 1 },
+    loadOp: "clear",
+    storeOp: "store"
+  }],
+  depthStencilAttachment: {
+    view: depthTexture.createView(),
+    depthClearValue: 1.0,
+    depthLoadOp: "clear",
+    depthStoreOp: "store"
+  }
+});</code></pre>
+      <p><code>depthClearValue: 1.0</code> fills the buffer with the far plane before drawing. Then anything you draw is nearer, and passes the first test.</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>The same three cards, now with a depth buffer:</p>
+<pre><code data-language="js">depthStencil: {
+  format: depthFormat,
+  depthWriteEnabled: true,
+  depthCompare: "less"
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=depth-on" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <p>The draw order is the same, but now the red card is in front, as it should be.</p>
+      <div class="callout callout-warning">
+        <strong>Warning</strong>
+        The pipeline and the render pass must agree. If the pipeline has <code>depthStencil</code> but the pass has no depth attachment, or the formats differ, WebGPU reports a validation error and draws nothing.
+      </div>
+
+      <h2>Depth in a Real 3D Scene</h2>
+      <p>In a 3D scene, the depth comes from the perspective matrix. Each cube's corners get a different <code>z</code>, and the GPU blends it across every triangle. So the depth test works per pixel, even where two cubes cross.</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Three rotating cubes, one draw call each, with depth testing:</p>
+<pre><code data-language="js">function render(timeMilliseconds) {
+  updateCubeMatrices(timeMilliseconds / 1000);
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: context.getCurrentTexture().createView(),
+      clearValue: { r: 0.05, g: 0.06, b: 0.07, a: 1 },
+      loadOp: "clear",
+      storeOp: "store"
+    }],
+    depthStencilAttachment: {
+      view: depthTexture.createView(),
+      depthClearValue: 1.0,
+      depthLoadOp: "clear",
+      depthStoreOp: "store"
+    }
+  });
+  pass.setPipeline(pipeline);
+  pass.setVertexBuffer(0, vertexBuffer);
+  for (const { bindGroup } of cubeResources) {
+    pass.setBindGroup(0, bindGroup);
+    pass.draw(vertexData.length / FLOATS_PER_VERTEX);
+  }
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  requestAnimationFrame(render);
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=depth-cubes" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <p>The full example has small matrix helpers written in plain JavaScript: <code>perspective</code>, <code>lookAt</code>, <code>multiply</code>, <code>rotationX</code>, <code>rotationY</code> and <code>translation</code>. The perspective matrix maps the near plane to z = 0 and the far plane to z = 1:</p>
+<pre><code data-language="js">function perspective(fieldOfView, aspect, near, far) {
+  const focalLength = 1 / Math.tan(fieldOfView / 2);
+  const rangeInverse = 1 / (near - far);
+  return new Float32Array([
+    focalLength / aspect, 0, 0, 0,
+    0, focalLength, 0, 0,
+    0, 0, far * rangeInverse, -1,
+    0, 0, near * far * rangeInverse, 0
+  ]);
+}</code></pre>
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        Depth precision is best near the camera. Keep the near plane as far away as you can (0.1 is common, not 0.0001). A tiny near value causes flickering where surfaces are close together. This is called <dfn>z-fighting</dfn>.
+      </div>
+
+      <h2>depthCompare Values</h2>
+      <p>The <code>depthCompare</code> option decides when a new pixel passes the test:</p>
+      <table class="reference-table">
+        <thead><tr><th>Value</th><th>The new pixel passes if its depth is…</th></tr></thead>
+        <tbody>
+          <tr><td><code>"never"</code></td><td>Never passes</td></tr>
+          <tr><td><code>"less"</code></td><td>Less than the stored depth. The usual choice.</td></tr>
+          <tr><td><code>"less-equal"</code></td><td>Less than or equal to the stored depth</td></tr>
+          <tr><td><code>"equal"</code></td><td>Exactly equal to the stored depth</td></tr>
+          <tr><td><code>"greater"</code></td><td>Greater than the stored depth. Used with "reversed z", clearing to 0.</td></tr>
+          <tr><td><code>"greater-equal"</code></td><td>Greater than or equal to the stored depth</td></tr>
+          <tr><td><code>"not-equal"</code></td><td>Different from the stored depth</td></tr>
+          <tr><td><code>"always"</code></td><td>Always passes. The same as no depth test.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Depth Formats</h2>
+      <table class="reference-table">
+        <thead><tr><th>Format</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>"depth16unorm"</code></td><td>16-bit depth. Small, but low precision.</td></tr>
+          <tr><td><code>"depth24plus"</code></td><td>At least 24-bit depth. The usual choice.</td></tr>
+          <tr><td><code>"depth24plus-stencil8"</code></td><td>Depth plus an 8-bit stencil buffer</td></tr>
+          <tr><td><code>"depth32float"</code></td><td>32-bit floating-point depth. Best precision.</td></tr>
+          <tr><td><code>"depth32float-stencil8"</code></td><td>32-bit depth plus stencil. Needs an optional device feature.</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        You can also read a depth texture in a shader, if you add <code>TEXTURE_BINDING</code> to its usage. <a href="/site/tutorials/shadow-mapping/">Shadow mapping</a> uses exactly this trick.
+      </div>
+
+      <h2>Exercises</h2>
+      <div class="exercise">
+        <p>1. What value should <code>depthClearValue</code> be when <code>depthCompare</code> is <code>"less"</code>?</p>
+        <details><summary>Show answer</summary><p><code>1.0</code>, the far plane. Then every pixel you draw is nearer and passes.</p></details>
+      </div>
+      <div class="exercise">
+        <p>2. In the depth-on example, change <code>depthCompare</code> to <code>"greater"</code> and <code>depthClearValue</code> to <code>0.0</code>. What happens?</p>
+        <details><summary>Show answer</summary><p>The test is flipped, so the furthest card wins. The blue card is drawn on top, just like the broken example. This shows that the depth test, not the draw order, now decides.</p></details>
+      </div>
+      <div class="exercise">
+        <p>3. Which usage flag must a depth texture have so a render pass can draw into it?</p>
+        <details><summary>Show answer</summary><pre><code data-language="js">usage: GPUTextureUsage.RENDER_ATTACHMENT</code></pre></details>
+      </div>
+      <div class="exercise">
+        <p>4. In the cubes example, set <code>depthWriteEnabled</code> to <code>false</code>. Why do the cubes look wrong again?</p>
+        <details><summary>Show answer</summary><p>Pixels are still tested, but their depth is never saved. The buffer stays at 1.0, so every pixel passes and the last one drawn wins.</p></details>
+      </div>
+
+      <h2>Summary</h2>
+      <ul>
+        <li>Without a depth buffer, the last thing drawn covers everything before it.</li>
+        <li>A depth buffer stores the nearest depth for every pixel, and throws away pixels that are further away.</li>
+        <li>In WebGPU, clip-space z goes from 0 (near) to 1 (far).</li>
+        <li>Create a <code>depth24plus</code> texture, add <code>depthStencil</code> to the pipeline, and add a <code>depthStencilAttachment</code> to the render pass.</li>
+        <li>Clear depth to 1.0 and use <code>depthCompare: "less"</code>.</li>
+      </ul>
+
+      {{official-links}}
+
+      <nav class="lesson-nav lesson-nav-bottom" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/camera-matrices/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/textures-samplers/" rel="next">Next ❯</a>
+      </nav>
+    </article>
+  </main>
+</div>
+{{include footer.html}}
+</body>
+</html>

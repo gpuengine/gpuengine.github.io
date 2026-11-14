@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>WebGPU Uniforms &amp; Bind Groups — Uniform Buffers Explained | WebGPU Tutorial</title>
+<meta name="description" content="Learn WebGPU uniforms and bind groups: var&lt;uniform&gt;, uniform buffers, createBindGroup, setBindGroup, per-frame animation and WGSL struct alignment and padding.">
+<meta property="og:title" content="WebGPU Uniforms &amp; Bind Groups — Uniform Buffers Explained">
+<meta property="og:type" content="article">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "WebGPU Uniforms & Bind Groups — Uniform Buffers Explained",
+    "description": "Send per-draw values like colour and time to WebGPU shaders with uniform buffers and bind groups.",
+    "proficiencyLevel": "Beginner",
+    "url": "{{canonical}}"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Tutorials", "item": "{{origin}}/site/tutorials/" },
+      { "@type": "ListItem", "position": 2, "name": "Uniforms & bind groups", "item": "{{canonical}}" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+{{include header.html}}
+<div class="doc">
+  {{include tutorial-sidebar.html}}
+  <main id="main">
+    <article>
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/tutorials/">Tutorials</a> / Getting started</nav>
+      <h1>WebGPU <span class="lesson-title-accent">Uniforms &amp; Bind Groups</span></h1>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/vertex-buffers/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/camera-matrices/" rel="next">Next ❯</a>
+      </nav>
+
+      <p class="lesson-intro">A <strong>uniform</strong> is a value that is the same for every vertex and every pixel in one draw call.</p>
+      <p>Colours, the time, the screen size and camera settings are all good uniforms. You send them through a <strong>uniform buffer</strong>, and connect that buffer to the shader with a <strong>bind group</strong>.</p>
+
+      <figure class="example-demo">
+        <iframe src="/site/tutorials/examples/uniform-animation.html" title="A coloured triangle spinning, driven by a time uniform" loading="lazy"></iframe>
+        <figcaption>A triangle rotated by a time uniform that changes every frame.</figcaption>
+      </figure>
+
+      <h2>Uniforms vs Vertex Data</h2>
+      <p>Vertex buffers give each vertex its <strong>own</strong> value. Uniforms give every vertex the <strong>same</strong> value.</p>
+      <table class="reference-table">
+        <thead><tr><th></th><th>Vertex buffer</th><th>Uniform buffer</th></tr></thead>
+        <tbody>
+          <tr><td>Value changes</td><td>Per vertex</td><td>Per draw call</td></tr>
+          <tr><td>Shader input</td><td><code>@location(n)</code> parameter</td><td><code>var&lt;uniform&gt;</code> global</td></tr>
+          <tr><td>Connected with</td><td><code>setVertexBuffer()</code></td><td><code>setBindGroup()</code></td></tr>
+          <tr><td>Example</td><td>Corner positions</td><td>Time, colour, camera</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Declaring a Uniform in WGSL</h2>
+      <p>A uniform is a global variable outside any function:</p>
+<pre><code data-language="wgsl">@group(0) @binding(0) var&lt;uniform&gt; color: vec4f;
+
+@fragment
+fn fragmentMain() -> @location(0) vec4f {
+  return color;
+}</code></pre>
+      <ul>
+        <li><code>var&lt;uniform&gt;</code> says the value comes from a uniform buffer.</li>
+        <li><code>@group(0)</code> picks the <strong>bind group</strong>: a set of resources you attach together.</li>
+        <li><code>@binding(0)</code> picks the slot inside that group.</li>
+      </ul>
+      <p>Every vertex and fragment shader in the module can read it. No shader can change it.</p>
+
+      <h2>Creating a Uniform Buffer</h2>
+      <p>A uniform buffer is made like a vertex buffer, but with the <code>UNIFORM</code> usage:</p>
+<pre><code data-language="js">const colorValue = new Float32Array([1.0, 0.55, 0.2, 1.0]);
+
+const uniformBuffer = device.createBuffer({
+  size: colorValue.byteLength,
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+});
+device.queue.writeBuffer(uniformBuffer, 0, colorValue);</code></pre>
+
+      <h2>Creating a Bind Group</h2>
+      <p>The shader only knows "group 0, binding 0". A <dfn>bind group</dfn> tells WebGPU which buffer that is.</p>
+      <p>A bind group must match a <dfn>bind group layout</dfn>. With <code>layout: "auto"</code>, WebGPU builds the layout from your shader. You get it with <code>pipeline.getBindGroupLayout(0)</code>, where <code>0</code> is the group number.</p>
+<pre><code data-language="js">const bindGroup = device.createBindGroup({
+  layout: pipeline.getBindGroupLayout(0),
+  entries: [
+    { binding: 0, resource: { buffer: uniformBuffer } }
+  ]
+});</code></pre>
+      <p>Each entry's <code>binding</code> number matches a <code>@binding(n)</code> in the shader.</p>
+
+      <h2>Using the Bind Group</h2>
+      <p>In the render pass, call <code>setBindGroup()</code> after <code>setPipeline()</code> and before you draw:</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Colour a triangle with a uniform:</p>
+<pre><code data-language="js">pass.setPipeline(pipeline);
+pass.setBindGroup(0, bindGroup);
+pass.draw(3);</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=uniform-color" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        In the Playground, change the numbers in <code>colorValue</code>. The shader stays the same, but the colour changes. That is the power of uniforms.
+      </div>
+
+      <h2>Updating Uniforms Every Frame</h2>
+      <p>To animate, write a new value into the uniform buffer, then draw again. Do this every frame with <code>requestAnimationFrame()</code>.</p>
+      <p>The browser passes the time in milliseconds to your function. Turn it into seconds and send it to the shader:</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Spin a triangle with a time uniform:</p>
+<pre><code data-language="js">const MILLISECONDS_PER_SECOND = 1000;
+const frameValues = new Float32Array(2);
+
+function render(timeInMilliseconds) {
+  frameValues[0] = timeInMilliseconds / MILLISECONDS_PER_SECOND;
+  frameValues[1] = canvas.width / canvas.height;
+  device.queue.writeBuffer(uniformBuffer, 0, frameValues);
+
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: context.getCurrentTexture().createView(),
+      clearValue: { r: 0.05, g: 0.06, b: 0.07, a: 1 },
+      loadOp: "clear",
+      storeOp: "store"
+    }]
+  });
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, bindGroup);
+  pass.draw(3);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+
+  requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=uniform-animation" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <p>The shader gets the time and the canvas aspect ratio in one struct. It rotates each corner by the time, then divides x by the aspect ratio so the triangle is not stretched:</p>
+<pre><code data-language="wgsl">struct Frame {
+  time: f32,
+  aspect: f32,
+}
+
+@group(0) @binding(0) var&lt;uniform&gt; frame: Frame;</code></pre>
+      <p>Inside <code>vertexMain</code>, the corner is rotated and corrected:</p>
+<pre><code data-language="wgsl">let angle = frame.time;
+let rotated = vec2f(
+  corner.x * cos(angle) - corner.y * sin(angle),
+  corner.x * sin(angle) + corner.y * cos(angle)
+);
+output.position = vec4f(rotated.x / frame.aspect, rotated.y, 0.0, 1.0);</code></pre>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        You must call <code>context.getCurrentTexture()</code> again every frame. The canvas gives you a fresh texture each time.
+      </div>
+
+      <h2>Struct Memory Layout</h2>
+      <p>When a uniform is a struct, each field must start at a byte offset that is a multiple of its <dfn>alignment</dfn>. The gaps that this leaves are called <dfn>padding</dfn>.</p>
+      <table class="reference-table">
+        <thead><tr><th>WGSL type</th><th>Size</th><th>Alignment</th></tr></thead>
+        <tbody>
+          <tr><td><code>f32</code>, <code>i32</code>, <code>u32</code></td><td>4 bytes</td><td>4</td></tr>
+          <tr><td><code>vec2f</code></td><td>8 bytes</td><td>8</td></tr>
+          <tr><td><code>vec3f</code></td><td>12 bytes</td><td>16</td></tr>
+          <tr><td><code>vec4f</code></td><td>16 bytes</td><td>16</td></tr>
+          <tr><td><code>mat4x4f</code></td><td>64 bytes</td><td>16</td></tr>
+        </tbody>
+      </table>
+      <p>The whole struct's size is also rounded up to a multiple of its largest alignment.</p>
+      <p>Look at this struct:</p>
+<pre><code data-language="wgsl">struct Shape {
+  offset: vec2f,
+  scale: f32,
+  color: vec3f,
+}</code></pre>
+      <p>Here is where each field lives in memory:</p>
+      <table class="reference-table">
+        <thead><tr><th>Bytes</th><th>Float index</th><th>Field</th></tr></thead>
+        <tbody>
+          <tr><td>0–7</td><td>0, 1</td><td><code>offset</code></td></tr>
+          <tr><td>8–11</td><td>2</td><td><code>scale</code></td></tr>
+          <tr><td>12–15</td><td>3</td><td><em>padding</em>: <code>color</code> must start at a multiple of 16</td></tr>
+          <tr><td>16–27</td><td>4, 5, 6</td><td><code>color</code></td></tr>
+          <tr><td>28–31</td><td>7</td><td><em>padding</em>: the struct size rounds up to 32</td></tr>
+        </tbody>
+      </table>
+      <div class="callout callout-warning">
+        <strong>Warning</strong>
+        A <code>vec3f</code> is 12 bytes but aligns to 16. If you pack your floats tightly in JavaScript, every value after a gap lands in the wrong place, and your shader reads garbage. Always leave the padding slots empty in your <code>Float32Array</code>.
+      </div>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Fill a padded struct and draw three triangles, each with its own bind group:</p>
+<pre><code data-language="js">const SHAPE_SIZE_IN_BYTES = 32;
+const OFFSET_INDEX = 0;
+const SCALE_INDEX = 2;
+const COLOR_INDEX = 4;
+
+function createShapeBindGroup(shape) {
+  const shapeValues = new Float32Array(SHAPE_SIZE_IN_BYTES / Float32Array.BYTES_PER_ELEMENT);
+  shapeValues.set(shape.offset, OFFSET_INDEX);
+  shapeValues[SCALE_INDEX] = shape.scale;
+  shapeValues.set(shape.color, COLOR_INDEX);
+
+  const uniformBuffer = device.createBuffer({
+    size: SHAPE_SIZE_IN_BYTES,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+  });
+  device.queue.writeBuffer(uniformBuffer, 0, shapeValues);
+
+  return device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: uniformBuffer } }]
+  });
+}
+
+for (const bindGroup of bindGroups) {
+  pass.setBindGroup(0, bindGroup);
+  pass.draw(3);
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=uniform-struct" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        To avoid padding, put the biggest types first and fill gaps with small ones. For example, a <code>vec3f</code> followed by an <code>f32</code> fits exactly in 16 bytes.
+      </div>
+
+      <h2>Exercises</h2>
+      <div class="exercise">
+        <p>1. Which usage flags does a uniform buffer need if you update it with <code>writeBuffer</code>?</p>
+        <details><summary>Show answer</summary><pre><code data-language="js">GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST</code></pre></details>
+      </div>
+      <div class="exercise">
+        <p>2. Declare a uniform called <code>brightness</code> of type <code>f32</code> at group 0, binding 1.</p>
+        <details><summary>Show answer</summary><pre><code data-language="wgsl">@group(0) @binding(1) var&lt;uniform&gt; brightness: f32;</code></pre></details>
+      </div>
+      <div class="exercise">
+        <p>3. What is the byte offset of <code>tint</code> in <code>struct Light { strength: f32, tint: vec3f }</code>? What is the size of the struct?</p>
+        <details><summary>Show answer</summary><p><code>tint</code> starts at byte <strong>16</strong>, because <code>vec3f</code> aligns to 16. The struct is <strong>32</strong> bytes.</p></details>
+      </div>
+      <div class="exercise">
+        <p>4. In the animation example, make the triangle spin twice as fast without changing the shader.</p>
+        <details><summary>Show answer</summary><pre><code data-language="js">frameValues[0] = 2 * timeInMilliseconds / MILLISECONDS_PER_SECOND;</code></pre></details>
+      </div>
+
+      <h2>Summary</h2>
+      <ul>
+        <li>A uniform is the same for every vertex and pixel in one draw.</li>
+        <li>Declare it with <code>@group(0) @binding(0) var&lt;uniform&gt;</code>.</li>
+        <li>Store it in a buffer with the <code>UNIFORM | COPY_DST</code> usage.</li>
+        <li>Connect the buffer with <code>device.createBindGroup()</code> and <code>pass.setBindGroup()</code>. With <code>layout: "auto"</code>, get the layout from <code>pipeline.getBindGroupLayout(0)</code>.</li>
+        <li>Animate by calling <code>writeBuffer</code> each frame inside <code>requestAnimationFrame</code>.</li>
+        <li>Struct fields follow alignment rules. <code>vec3f</code> aligns to 16 bytes, so leave padding.</li>
+      </ul>
+
+      {{official-links}}
+
+      <nav class="lesson-nav lesson-nav-bottom" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/vertex-buffers/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/camera-matrices/" rel="next">Next ❯</a>
+      </nav>
+    </article>
+  </main>
+</div>
+{{include footer.html}}
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="canonical" href="{{canonical}}">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<link rel="stylesheet" href="/site/tutorials/playground/playground.css">
+<title>WebGPU Playground | gpuengine</title>
+<meta name="description" content="Edit WebGPU and WGSL code and run it instantly in your browser.">
+<script src="/site/tutorials/playground/playground.js" defer></script>
+</head>
+<body class="playground-page">
+<header class="playground-bar">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <button id="playground-run" class="playground-run" type="button" title="Run (Ctrl+Enter)">Run ❯</button>
+  <span id="playground-title" class="playground-title">WebGPU Playground</span>
+  <button id="playground-reset" class="playground-secondary" type="button">Reset</button>
+  <a id="playground-lesson" class="playground-secondary" href="/site/tutorials/">Back to tutorials</a>
+</header>
+<main id="main" class="playground-panes">
+  <section class="playground-pane" aria-label="Code editor">
+    <textarea id="playground-code" class="playground-code" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Example source code"></textarea>
+  </section>
+  <section class="playground-pane" aria-label="Result">
+    <iframe id="playground-result" class="playground-result" title="Result of the example"></iframe>
+  </section>
+</main>
+</body>
+</html>

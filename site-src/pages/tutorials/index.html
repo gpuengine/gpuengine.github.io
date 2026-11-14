@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>WebGPU Tutorial — Learn WebGPU and WGSL Step by Step | gpuengine</title>
+<meta name="description" content="Free WebGPU tutorial for beginners: 12 lessons from your first triangle to WGSL, buffers, uniforms, 3D cameras, textures, instancing, compute shaders, shadows and post-processing. Try every example in your browser.">
+<meta property="og:title" content="WebGPU Tutorial — Learn WebGPU and WGSL Step by Step">
+<meta property="og:type" content="website">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Course",
+  "name": "WebGPU Tutorial",
+  "description": "Twelve short lessons that teach WebGPU and WGSL, from the first triangle to compute shaders, shadow mapping and post-processing, with runnable examples.",
+  "url": "{{canonical}}",
+  "provider": { "@type": "Organization", "name": "gpuengine", "url": "{{origin}}/" },
+  "isAccessibleForFree": true,
+  "educationalLevel": "Beginner to intermediate"
+}
+</script>
+</head>
+<body>
+{{include header.html}}
+<main id="main">
+  <header class="page-header">
+    <h1>WebGPU <span class="lesson-title-accent">Tutorial</span></h1>
+    <p>WebGPU is the modern way to use the graphics card from a web page. These 12 short lessons take you from your first triangle to 3D scenes, compute shaders and post-processing.</p>
+    <div class="button-row tutorial-start">
+      <a class="button" href="/site/tutorials/webgpu-intro/">Start learning WebGPU now »</a>
+      <a class="button button-ghost" href="/site/tutorials/playground/?example=first-triangle" target="_blank">Open the Playground</a>
+    </div>
+  </header>
+
+  <section class="section section-tight" aria-labelledby="how-heading">
+    <h2 id="how-heading">Learning by examples</h2>
+    <p class="section-lead">Every lesson has examples you can edit and run in your browser with the <strong>Playground</strong>. Change the code, press Run, and see the result straight away.</p>
+    <div class="example tutorial-sample">
+      <h3>Example</h3>
+      <p>A complete WebGPU fragment shader:</p>
+<pre><code data-language="wgsl">@fragment
+fn fragmentMain() -> @location(0) vec4f {
+  return vec4f(0.49, 0.95, 0.61, 1.0);
+}</code></pre>
+      <a class="run-button" href="/site/tutorials/playground/?example=first-triangle" target="_blank">Edit &amp; Run »</a>
+    </div>
+  </section>
+
+  <section class="section section-tight" aria-labelledby="getting-started">
+    <h2 id="getting-started">Getting started</h2>
+    <ul class="cards">
+      <li><a class="card" href="/site/tutorials/webgpu-intro/"><span class="card-kicker">Lesson 1</span><h3>What is WebGPU?</h3><p>What WebGPU is, how it compares to WebGL, and how to check browser support.</p></a></li>
+      <li><a class="card" href="/site/tutorials/first-triangle/"><span class="card-kicker">Lesson 2</span><h3>Your first triangle</h3><p>Device, canvas, shaders, pipeline and render pass: the WebGPU "Hello World".</p></a></li>
+      <li><a class="card" href="/site/tutorials/wgsl-basics/"><span class="card-kicker">Lesson 3</span><h3>WGSL basics</h3><p>Types, vectors, structs, built-in functions and loops in the WebGPU Shading Language.</p></a></li>
+      <li><a class="card" href="/site/tutorials/vertex-buffers/"><span class="card-kicker">Lesson 4</span><h3>Vertex buffers</h3><p>Send your own geometry to the GPU, with index buffers to share corners.</p></a></li>
+      <li><a class="card" href="/site/tutorials/uniforms-bind-groups/"><span class="card-kicker">Lesson 5</span><h3>Uniforms &amp; bind groups</h3><p>Pass colours, time and settings from JavaScript into your shaders.</p></a></li>
+    </ul>
+  </section>
+
+  <section class="section section-tight" aria-labelledby="going-3d">
+    <h2 id="going-3d">Going 3D</h2>
+    <ul class="cards">
+      <li><a class="card" href="/site/tutorials/camera-matrices/"><span class="card-kicker">Lesson 6</span><h3>Camera &amp; matrices</h3><p>Model, view and projection matrices in plain JavaScript, and a spinning cube.</p></a></li>
+      <li><a class="card" href="/site/tutorials/depth-buffer/"><span class="card-kicker">Lesson 7</span><h3>Depth buffer</h3><p>Make near objects hide far ones, whatever order you draw them in.</p></a></li>
+      <li><a class="card" href="/site/tutorials/textures-samplers/"><span class="card-kicker">Lesson 8</span><h3>Textures &amp; samplers</h3><p>Upload images to the GPU and sample them in a fragment shader.</p></a></li>
+      <li><a class="card" href="/site/tutorials/instancing/"><span class="card-kicker">Lesson 9</span><h3>Instancing</h3><p>Draw thousands of objects with a single draw call.</p></a></li>
+    </ul>
+  </section>
+
+  <section class="section section-tight" aria-labelledby="advanced">
+    <h2 id="advanced">Advanced</h2>
+    <ul class="cards">
+      <li><a class="card" href="/site/tutorials/compute-shaders/"><span class="card-kicker">Lesson 10</span><h3>Compute shaders</h3><p>Run general-purpose work on the GPU, from number crunching to particles.</p></a></li>
+      <li><a class="card" href="/site/tutorials/shadow-mapping/"><span class="card-kicker">Lesson 11</span><h3>Shadow mapping</h3><p>Render depth from the light, then compare to draw real-time shadows.</p></a></li>
+      <li><a class="card" href="/site/tutorials/post-processing/"><span class="card-kicker">Lesson 12</span><h3>Post-processing</h3><p>Greyscale, vignette, colour grading and blur in full-screen passes.</p></a></li>
+    </ul>
+  </section>
+
+  <section class="section section-tight" aria-labelledby="official-heading">
+    <h2 id="official-heading">Official WebGPU documentation</h2>
+    <p class="section-lead">Every lesson ends with links to the matching pages of the official references. These are the ones to bookmark.</p>
+    <ul class="cards official-cards">
+      <li><a class="card" href="https://www.w3.org/TR/webgpu/" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WebGPU specification</h3><p>The W3C standard for the API, with every validation rule.</p></a></li>
+      <li><a class="card" href="https://www.w3.org/TR/WGSL/" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WGSL specification</h3><p>The shading language standard: types, layout and built-ins.</p></a></li>
+      <li><a class="card" href="https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API" rel="noopener external"><span class="card-kicker">developer.mozilla.org</span><h3>MDN: WebGPU API</h3><p>Reference for every interface, with browser compatibility.</p></a></li>
+      <li><a class="card" href="https://webgpu.github.io/webgpu-samples/" rel="noopener external"><span class="card-kicker">webgpu.github.io</span><h3>WebGPU Samples</h3><p>The official collection of runnable WebGPU examples.</p></a></li>
+    </ul>
+    <p class="section-more"><a href="/site/resources/">All WebGPU and GPU resources →</a></p>
+  </section>
+</main>
+{{include footer.html}}
+</body>
+</html>

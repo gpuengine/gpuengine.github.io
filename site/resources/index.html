@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://gpuengine.github.io/site/resources/">
+<meta property="og:url" content="https://gpuengine.github.io/site/resources/">
+<meta property="og:site_name" content="gpuengine">
+<meta property="og:image" content="https://gpuengine.github.io/site/media/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<script src="/site/site.js" defer></script>
+<script src="/site/code-highlight.js" defer></script>
+
+<title>WebGPU Resources — Official Specs, Docs, Browser Support &amp; GPU Developer Links | gpuengine</title>
+<meta name="description" content="The official WebGPU and WGSL specifications, MDN and Chrome documentation, browser support tables, official samples, the Dawn and wgpu implementations, Vulkan, Metal and Direct3D 12 docs, and NVIDIA and AMD GPU developer tools, in one place.">
+<meta property="og:title" content="WebGPU Resources: official specs, docs and GPU developer links">
+<meta property="og:description" content="Every official WebGPU, WGSL and GPU resource worth bookmarking, with a line on what each one is for.">
+<meta property="og:type" content="website">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    "name": "WebGPU Resources",
+    "description": "Official WebGPU and WGSL specifications, documentation, browser support, samples, implementations and GPU vendor developer resources.",
+    "url": "https://gpuengine.github.io/site/resources/",
+    "about": [
+      { "@type": "Thing", "name": "WebGPU", "sameAs": "https://www.w3.org/TR/webgpu/" },
+      { "@type": "Thing", "name": "WGSL", "sameAs": "https://www.w3.org/TR/WGSL/" }
+    ],
+    "isPartOf": { "@type": "WebSite", "name": "gpuengine", "url": "https://gpuengine.github.io/" }
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Tutorials", "item": "https://gpuengine.github.io/site/tutorials/" },
+      { "@type": "ListItem", "position": 2, "name": "WebGPU resources", "item": "https://gpuengine.github.io/site/resources/" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/site/tutorials/" data-nav-section>Tutorials</a>
+    <a href="/site/articles/" data-nav-section>Articles</a>
+    <a href="/site/games/" data-nav-section>Games</a>
+    <a href="/site/tools/" data-nav-section>Tools</a>
+    <a class="site-nav-cta" href="/site/wgpu3d/" data-nav-section>wgpu3d</a>
+    <a class="site-nav-about" href="/site/about/" data-nav-section><svg class="site-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.42 0-8 2.24-8 5v2h16v-2c0-2.76-3.58-5-8-5Z"/></svg>About</a>
+  </nav>
+</header>
+
+<main id="main">
+  <header class="page-header">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/tutorials/">Tutorials</a> / Resources</nav>
+    <h1>WebGPU resources</h1>
+    <p>The official places to learn and look things up: the WebGPU and WGSL specifications, browser documentation, support tables, samples, the engines inside the browsers, and the GPU APIs and vendor tools underneath. Each link has a line on when it is useful.</p>
+    <div class="button-row">
+      <a class="button" href="/site/tutorials/">Start the WebGPU tutorial</a>
+      <a class="button button-ghost" href="/site/wgpu3d/">Build with wgpu3d</a>
+    </div>
+  </header>
+
+<nav class="section section-tight resource-contents" aria-label="On this page"><ul><li><a href="#specifications">WebGPU and WGSL specifications</a></li><li><a href="#documentation">Official WebGPU documentation</a></li><li><a href="#browser-support">WebGPU browser support</a></li><li><a href="#samples">Official samples and learning material</a></li><li><a href="#implementations">WebGPU implementations</a></li><li><a href="#native-gpu-apis">The GPU APIs underneath WebGPU</a></li><li><a href="#gpu-vendors">GPU vendor developer resources</a></li></ul></nav>
+<section class="section section-tight" aria-labelledby="specifications"><h2 id="specifications">WebGPU and WGSL specifications</h2><p class="section-lead">The standards every browser implements, written by the W3C GPU for the Web Working Group. When documentation disagrees, the specification is the final word.</p><ul class="cards official-cards"><li><a class="card" href="https://www.w3.org/TR/webgpu/" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WebGPU specification</h3><p>The W3C standard for the WebGPU API: adapters, devices, buffers, textures, pipelines, passes and every validation rule.</p></a></li><li><a class="card" href="https://www.w3.org/TR/WGSL/" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WGSL specification</h3><p>The WebGPU Shading Language standard: types, memory layout, address spaces, built-in values and functions.</p></a></li><li><a class="card" href="https://gpuweb.github.io/gpuweb/" rel="noopener external"><span class="card-kicker">gpuweb.github.io</span><h3>WebGPU editor&#x27;s draft</h3><p>The latest working version of the specification, updated as changes land, ahead of the published W3C version.</p></a></li><li><a class="card" href="https://gpuweb.github.io/gpuweb/explainer/" rel="noopener external"><span class="card-kicker">gpuweb.github.io</span><h3>WebGPU explainer</h3><p>Why WebGPU is designed the way it is: security, portability, the object model and the reasoning behind each choice.</p></a></li><li><a class="card" href="https://www.w3.org/groups/wg/gpu/" rel="noopener external"><span class="card-kicker">w3.org</span><h3>GPU for the Web Working Group</h3><p>The W3C group that develops WebGPU and WGSL, with its charter, participants and publications.</p></a></li><li><a class="card" href="https://github.com/gpuweb/gpuweb" rel="noopener external"><span class="card-kicker">github.com</span><h3>gpuweb on GitHub</h3><p>Where the specification is written: issues, proposals for new features and discussion with browser engineers.</p></a></li></ul></section>
+<section class="section section-tight" aria-labelledby="documentation"><h2 id="documentation">Official WebGPU documentation</h2><p class="section-lead">Reference and guides from browser makers and MDN, with an entry for every interface, method and dictionary in the API.</p><ul class="cards official-cards"><li><a class="card" href="https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API" rel="noopener external"><span class="card-kicker">developer.mozilla.org</span><h3>MDN: WebGPU API</h3><p>Mozilla&#x27;s reference for every WebGPU interface, with concepts, examples and browser compatibility tables.</p></a></li><li><a class="card" href="https://developer.chrome.com/docs/web-platform/webgpu/overview" rel="noopener external"><span class="card-kicker">developer.chrome.com</span><h3>Chrome for Developers: WebGPU overview</h3><p>Google&#x27;s guide to WebGPU in Chrome: getting started, new features in each release and platform notes.</p></a></li><li><a class="card" href="https://developer.chrome.com/docs/web-platform/webgpu/from-webgl-to-webgpu" rel="noopener external"><span class="card-kicker">developer.chrome.com</span><h3>From WebGL to WebGPU</h3><p>Chrome&#x27;s guide for WebGL developers: how contexts, buffers, uniforms, shaders and draw calls map to WebGPU.</p></a></li><li><a class="card" href="https://developer.chrome.com/docs/web-platform/webgpu/troubleshooting-tips" rel="noopener external"><span class="card-kicker">developer.chrome.com</span><h3>WebGPU troubleshooting tips</h3><p>Why navigator.gpu can be missing or requestAdapter can return null, and how to fix it in Chrome.</p></a></li><li><a class="card" href="https://github.com/gpuweb/types" rel="noopener external"><span class="card-kicker">github.com</span><h3>WebGPU TypeScript types</h3><p>The official TypeScript definitions for WebGPU (@webgpu/types), maintained alongside the specification.</p></a></li></ul></section>
+<section class="section section-tight" aria-labelledby="browser-support"><h2 id="browser-support">WebGPU browser support</h2><p class="section-lead">WebGPU ships in Chrome, Edge and Safari, and in Firefox on Windows. These pages track exactly which versions and platforms support it.</p><ul class="cards official-cards"><li><a class="card" href="https://caniuse.com/webgpu" rel="noopener external"><span class="card-kicker">caniuse.com</span><h3>Can I use: WebGPU</h3><p>Browser and version support for WebGPU across desktop and mobile, with notes on flags and platforms.</p></a></li><li><a class="card" href="https://github.com/gpuweb/gpuweb/wiki/Implementation-Status" rel="noopener external"><span class="card-kicker">github.com</span><h3>WebGPU implementation status</h3><p>The working group&#x27;s own table of where each browser engine ships WebGPU and on which operating systems.</p></a></li><li><a class="card" href="https://web.dev/blog/webgpu-supported-major-browsers" rel="noopener external"><span class="card-kicker">web.dev</span><h3>WebGPU supported in major browsers</h3><p>web.dev&#x27;s announcement of WebGPU shipping across Chrome, Edge, Firefox and Safari, with what it means for developers.</p></a></li><li><a class="card" href="https://developer.chrome.com/blog/webgpu-release" rel="noopener external"><span class="card-kicker">developer.chrome.com</span><h3>Chrome ships WebGPU</h3><p>The Chrome 113 release post that brought WebGPU to the stable web on Windows, macOS and ChromeOS.</p></a></li><li><a class="card" href="https://webgpureport.org/" rel="noopener external"><span class="card-kicker">webgpureport.org</span><h3>WebGPU Report</h3><p>Shows your own browser&#x27;s WebGPU adapter, features and limits, handy when a demo does not run on one machine.</p></a></li></ul></section>
+<section class="section section-tight" aria-labelledby="samples"><h2 id="samples">Official samples and learning material</h2><p class="section-lead">Runnable examples and guides written or reviewed by people who work on the specification and the browsers.</p><ul class="cards official-cards"><li><a class="card" href="https://webgpu.github.io/webgpu-samples/" rel="noopener external"><span class="card-kicker">webgpu.github.io</span><h3>WebGPU Samples</h3><p>The official sample collection: triangles, textured cubes, instancing, shadow mapping, compute particles, deferred rendering and more.</p></a></li><li><a class="card" href="https://google.github.io/tour-of-wgsl/" rel="noopener external"><span class="card-kicker">google.github.io</span><h3>Tour of WGSL</h3><p>An interactive walk through the WGSL language, one feature per page, with code you can edit and run.</p></a></li><li><a class="card" href="https://toji.dev/webgpu-best-practices/" rel="noopener external"><span class="card-kicker">toji.dev</span><h3>WebGPU best practices</h3><p>Practical advice from a WebGPU specification editor on buffers, bind groups, image uploads and error handling.</p></a></li><li><a class="card" href="https://webgpufundamentals.org/" rel="noopener external"><span class="card-kicker">webgpufundamentals.org</span><h3>WebGPU Fundamentals</h3><p>A widely used community tutorial series that explains WebGPU from first principles, with many live examples.</p></a></li></ul></section>
+<section class="section section-tight" aria-labelledby="implementations"><h2 id="implementations">WebGPU implementations</h2><p class="section-lead">The open-source engines inside the browsers. Both also run outside the browser, so WebGPU code ideas carry over to native apps.</p><ul class="cards official-cards"><li><a class="card" href="https://dawn.googlesource.com/dawn" rel="noopener external"><span class="card-kicker">dawn.googlesource.com</span><h3>Dawn</h3><p>The C++ WebGPU implementation used by Chrome and Edge, translating WebGPU to Vulkan, Metal and Direct3D 12.</p></a></li><li><a class="card" href="https://github.com/gfx-rs/wgpu" rel="noopener external"><span class="card-kicker">github.com</span><h3>wgpu</h3><p>The Rust WebGPU implementation used by Firefox, also a popular native graphics library on every desktop and mobile platform.</p></a></li></ul></section>
+<section class="section section-tight" aria-labelledby="native-gpu-apis"><h2 id="native-gpu-apis">The GPU APIs underneath WebGPU</h2><p class="section-lead">WebGPU is modelled on modern native graphics APIs and runs on top of them. Their documentation explains what the GPU is actually doing.</p><ul class="cards official-cards"><li><a class="card" href="https://www.vulkan.org/" rel="noopener external"><span class="card-kicker">vulkan.org</span><h3>Vulkan</h3><p>Khronos&#x27; cross-platform GPU API, which WebGPU uses on Windows, Linux, Android and ChromeOS.</p></a></li><li><a class="card" href="https://docs.vulkan.org/" rel="noopener external"><span class="card-kicker">docs.vulkan.org</span><h3>Vulkan documentation</h3><p>The Vulkan specification, guide and samples, useful for understanding pipelines, synchronisation and memory.</p></a></li><li><a class="card" href="https://developer.apple.com/metal/" rel="noopener external"><span class="card-kicker">developer.apple.com</span><h3>Apple Metal</h3><p>Apple&#x27;s GPU API, which WebGPU uses on macOS and iOS, with tools, sample code and performance guides.</p></a></li><li><a class="card" href="https://learn.microsoft.com/en-us/windows/win32/direct3d12/directx-12-programming-guide" rel="noopener external"><span class="card-kicker">learn.microsoft.com</span><h3>Direct3D 12 programming guide</h3><p>Microsoft&#x27;s guide to Direct3D 12, which WebGPU uses on Windows.</p></a></li><li><a class="card" href="https://www.khronos.org/webgl/" rel="noopener external"><span class="card-kicker">khronos.org</span><h3>WebGL</h3><p>The Khronos home of WebGL, the browser graphics API that came before WebGPU.</p></a></li><li><a class="card" href="https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API" rel="noopener external"><span class="card-kicker">developer.mozilla.org</span><h3>MDN: WebGL API</h3><p>Mozilla&#x27;s WebGL reference and tutorials, useful when porting older code to WebGPU.</p></a></li><li><a class="card" href="https://www.khronos.org/" rel="noopener external"><span class="card-kicker">khronos.org</span><h3>Khronos Group</h3><p>The standards body behind Vulkan, OpenGL, WebGL, glTF and SPIR-V.</p></a></li></ul></section>
+<section class="section section-tight" aria-labelledby="gpu-vendors"><h2 id="gpu-vendors">GPU vendor developer resources</h2><p class="section-lead">Profilers, debuggers and performance guides from the companies that make the GPUs your WebGPU code runs on.</p><ul class="cards official-cards"><li><a class="card" href="https://developer.nvidia.com/" rel="noopener external"><span class="card-kicker">developer.nvidia.com</span><h3>NVIDIA Developer</h3><p>NVIDIA&#x27;s developer hub: graphics and compute documentation, SDKs and performance guides for GeForce and RTX GPUs.</p></a></li><li><a class="card" href="https://developer.nvidia.com/nsight-graphics" rel="noopener external"><span class="card-kicker">developer.nvidia.com</span><h3>NVIDIA Nsight Graphics</h3><p>A frame debugger and profiler for Vulkan and Direct3D 12, the APIs WebGPU runs on in Chrome.</p></a></li><li><a class="card" href="https://gpuopen.com/" rel="noopener external"><span class="card-kicker">gpuopen.com</span><h3>AMD GPUOpen</h3><p>AMD&#x27;s open-source tools, libraries and in-depth articles on how Radeon GPUs execute shaders.</p></a></li><li><a class="card" href="https://gpuopen.com/rgp/" rel="noopener external"><span class="card-kicker">gpuopen.com</span><h3>Radeon GPU Profiler</h3><p>AMD&#x27;s low-level profiler that shows how each draw and dispatch occupies the GPU.</p></a></li><li><a class="card" href="https://developer.apple.com/documentation/metal" rel="noopener external"><span class="card-kicker">developer.apple.com</span><h3>Apple Metal documentation</h3><p>Apple&#x27;s Metal reference, including GPU capture and profiling in Xcode for Apple silicon.</p></a></li></ul></section>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  "name": "Official WebGPU and GPU resources",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "WebGPU specification",
+      "url": "https://www.w3.org/TR/webgpu/",
+      "description": "The W3C standard for the WebGPU API: adapters, devices, buffers, textures, pipelines, passes and every validation rule."
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "WGSL specification",
+      "url": "https://www.w3.org/TR/WGSL/",
+      "description": "The WebGPU Shading Language standard: types, memory layout, address spaces, built-in values and functions."
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "WebGPU editor's draft",
+      "url": "https://gpuweb.github.io/gpuweb/",
+      "description": "The latest working version of the specification, updated as changes land, ahead of the published W3C version."
+    },
+    {
+      "@type": "ListItem",
+      "position": 4,
+      "name": "WebGPU explainer",
+      "url": "https://gpuweb.github.io/gpuweb/explainer/",
+      "description": "Why WebGPU is designed the way it is: security, portability, the object model and the reasoning behind each choice."
+    },
+    {
+      "@type": "ListItem",
+      "position": 5,
+      "name": "GPU for the Web Working Group",
+      "url": "https://www.w3.org/groups/wg/gpu/",
+      "description": "The W3C group that develops WebGPU and WGSL, with its charter, participants and publications."
+    },
+    {
+      "@type": "ListItem",
+      "position": 6,
+      "name": "gpuweb on GitHub",
+      "url": "https://github.com/gpuweb/gpuweb",
+      "description": "Where the specification is written: issues, proposals for new features and discussion with browser engineers."
+    },
+    {
+      "@type": "ListItem",
+      "position": 7,
+      "name": "MDN: WebGPU API",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API",
+      "description": "Mozilla's reference for every WebGPU interface, with concepts, examples and browser compatibility tables."
+    },
+    {
+      "@type": "ListItem",
+      "position": 8,
+      "name": "Chrome for Developers: WebGPU overview",
+      "url": "https://developer.chrome.com/docs/web-platform/webgpu/overview",
+      "description": "Google's guide to WebGPU in Chrome: getting started, new features in each release and platform notes."
+    },
+    {
+      "@type": "ListItem",
+      "position": 9,
+      "name": "From WebGL to WebGPU",
+      "url": "https://developer.chrome.com/docs/web-platform/webgpu/from-webgl-to-webgpu",
+      "description": "Chrome's guide for WebGL developers: how contexts, buffers, uniforms, shaders and draw calls map to WebGPU."
+    },
+    {
+      "@type": "ListItem",
+      "position": 10,
+      "name": "WebGPU troubleshooting tips",
+      "url": "https://developer.chrome.com/docs/web-platform/webgpu/troubleshooting-tips",
+      "description": "Why navigator.gpu can be missing or requestAdapter can return null, and how to fix it in Chrome."
+    },
+    {
+      "@type": "ListItem",
+      "position": 11,
+      "name": "WebGPU TypeScript types",
+      "url": "https://github.com/gpuweb/types",
+      "description": "The official TypeScript definitions for WebGPU (@webgpu/types), maintained alongside the specification."
+    },
+    {
+      "@type": "ListItem",
+      "position": 12,
+      "name": "Can I use: WebGPU",
+      "url": "https://caniuse.com/webgpu",
+      "description": "Browser and version support for WebGPU across desktop and mobile, with notes on flags and platforms."
+    },
+    {
+      "@type": "ListItem",
+      "position": 13,
+      "name": "WebGPU implementation status",
+      "url": "https://github.com/gpuweb/gpuweb/wiki/Implementation-Status",
+      "description": "The working group's own table of where each browser engine ships WebGPU and on which operating systems."
+    },
+    {
+      "@type": "ListItem",
+      "position": 14,
+      "name": "WebGPU supported in major browsers",
+      "url": "https://web.dev/blog/webgpu-supported-major-browsers",
+      "description": "web.dev's announcement of WebGPU shipping across Chrome, Edge, Firefox and Safari, with what it means for developers."
+    },
+    {
+      "@type": "ListItem",
+      "position": 15,
+      "name": "Chrome ships WebGPU",
+      "url": "https://developer.chrome.com/blog/webgpu-release",
+      "description": "The Chrome 113 release post that brought WebGPU to the stable web on Windows, macOS and ChromeOS."
+    },
+    {
+      "@type": "ListItem",
+      "position": 16,
+      "name": "WebGPU Report",
+      "url": "https://webgpureport.org/",
+      "description": "Shows your own browser's WebGPU adapter, features and limits, handy when a demo does not run on one machine."
+    },
+    {
+      "@type": "ListItem",
+      "position": 17,
+      "name": "WebGPU Samples",
+      "url": "https://webgpu.github.io/webgpu-samples/",
+      "description": "The official sample collection: triangles, textured cubes, instancing, shadow mapping, compute particles, deferred rendering and more."
+    },
+    {
+      "@type": "ListItem",
+      "position": 18,
+      "name": "Tour of WGSL",
+      "url": "https://google.github.io/tour-of-wgsl/",
+      "description": "An interactive walk through the WGSL language, one feature per page, with code you can edit and run."
+    },
+    {
+      "@type": "ListItem",
+      "position": 19,
+      "name": "WebGPU best practices",
+      "url": "https://toji.dev/webgpu-best-practices/",
+      "description": "Practical advice from a WebGPU specification editor on buffers, bind groups, image uploads and error handling."
+    },
+    {
+      "@type": "ListItem",
+      "position": 20,
+      "name": "WebGPU Fundamentals",
+      "url": "https://webgpufundamentals.org/",
+      "description": "A widely used community tutorial series that explains WebGPU from first principles, with many live examples."
+    },
+    {
+      "@type": "ListItem",
+      "position": 21,
+      "name": "Dawn",
+      "url": "https://dawn.googlesource.com/dawn",
+      "description": "The C++ WebGPU implementation used by Chrome and Edge, translating WebGPU to Vulkan, Metal and Direct3D 12."
+    },
+    {
+      "@type": "ListItem",
+      "position": 22,
+      "name": "wgpu",
+      "url": "https://github.com/gfx-rs/wgpu",
+      "description": "The Rust WebGPU implementation used by Firefox, also a popular native graphics library on every desktop and mobile platform."
+    },
+    {
+      "@type": "ListItem",
+      "position": 23,
+      "name": "Vulkan",
+      "url": "https://www.vulkan.org/",
+      "description": "Khronos' cross-platform GPU API, which WebGPU uses on Windows, Linux, Android and ChromeOS."
+    },
+    {
+      "@type": "ListItem",
+      "position": 24,
+      "name": "Vulkan documentation",
+      "url": "https://docs.vulkan.org/",
+      "description": "The Vulkan specification, guide and samples, useful for understanding pipelines, synchronisation and memory."
+    },
+    {
+      "@type": "ListItem",
+      "position": 25,
+      "name": "Apple Metal",
+      "url": "https://developer.apple.com/metal/",
+      "description": "Apple's GPU API, which WebGPU uses on macOS and iOS, with tools, sample code and performance guides."
+    },
+    {
+      "@type": "ListItem",
+      "position": 26,
+      "name": "Direct3D 12 programming guide",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/direct3d12/directx-12-programming-guide",
+      "description": "Microsoft's guide to Direct3D 12, which WebGPU uses on Windows."
+    },
+    {
+      "@type": "ListItem",
+      "position": 27,
+      "name": "WebGL",
+      "url": "https://www.khronos.org/webgl/",
+      "description": "The Khronos home of WebGL, the browser graphics API that came before WebGPU."
+    },
+    {
+      "@type": "ListItem",
+      "position": 28,
+      "name": "MDN: WebGL API",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API",
+      "description": "Mozilla's WebGL reference and tutorials, useful when porting older code to WebGPU."
+    },
+    {
+      "@type": "ListItem",
+      "position": 29,
+      "name": "Khronos Group",
+      "url": "https://www.khronos.org/",
+      "description": "The standards body behind Vulkan, OpenGL, WebGL, glTF and SPIR-V."
+    },
+    {
+      "@type": "ListItem",
+      "position": 30,
+      "name": "NVIDIA Developer",
+      "url": "https://developer.nvidia.com/",
+      "description": "NVIDIA's developer hub: graphics and compute documentation, SDKs and performance guides for GeForce and RTX GPUs."
+    },
+    {
+      "@type": "ListItem",
+      "position": 31,
+      "name": "NVIDIA Nsight Graphics",
+      "url": "https://developer.nvidia.com/nsight-graphics",
+      "description": "A frame debugger and profiler for Vulkan and Direct3D 12, the APIs WebGPU runs on in Chrome."
+    },
+    {
+      "@type": "ListItem",
+      "position": 32,
+      "name": "AMD GPUOpen",
+      "url": "https://gpuopen.com/",
+      "description": "AMD's open-source tools, libraries and in-depth articles on how Radeon GPUs execute shaders."
+    },
+    {
+      "@type": "ListItem",
+      "position": 33,
+      "name": "Radeon GPU Profiler",
+      "url": "https://gpuopen.com/rgp/",
+      "description": "AMD's low-level profiler that shows how each draw and dispatch occupies the GPU."
+    },
+    {
+      "@type": "ListItem",
+      "position": 34,
+      "name": "Apple Metal documentation",
+      "url": "https://developer.apple.com/documentation/metal",
+      "description": "Apple's Metal reference, including GPU capture and profiling in Xcode for Apple silicon."
+    }
+  ]
+}
+</script>
+
+  <section class="section section-tight" aria-labelledby="where-to-start">
+    <h2 id="where-to-start">Where to start</h2>
+    <dl class="faq">
+      <dt>I am new to WebGPU.</dt>
+      <dd>Read the <a href="/site/tutorials/webgpu-intro/">introduction lesson</a>, then keep the <a href="https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API" rel="noopener external">MDN WebGPU reference</a> open while you work through the <a href="/site/tutorials/">tutorial</a>.</dd>
+      <dt>I know WebGL.</dt>
+      <dd>Chrome's <a href="https://developer.chrome.com/docs/web-platform/webgpu/from-webgl-to-webgpu" rel="noopener external">From WebGL to WebGPU</a> maps each concept across, and the <a href="/site/articles/webgpu-vs-webgl/">WebGPU vs WebGL article</a> shows what changes in practice, with numbers.</dd>
+      <dt>A demo does not run on my machine.</dt>
+      <dd>Check <a href="https://caniuse.com/webgpu" rel="noopener external">Can I use</a> for your browser version, open <a href="https://webgpureport.org/" rel="noopener external">WebGPU Report</a> to see your adapter, and follow Chrome's <a href="https://developer.chrome.com/docs/web-platform/webgpu/troubleshooting-tips" rel="noopener external">troubleshooting tips</a>.</dd>
+      <dt>I need the exact rule for something.</dt>
+      <dd>Search the <a href="https://www.w3.org/TR/webgpu/" rel="noopener external">WebGPU specification</a> for API behaviour and validation, or the <a href="https://www.w3.org/TR/WGSL/" rel="noopener external">WGSL specification</a> for shader types, layout and built-ins.</dd>
+    </dl>
+  </section>
+</main>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="/site/tutorials/">Tutorials</a>
+      <a href="/site/articles/">Articles</a>
+      <a href="/site/games/">Games</a>
+      <a href="/site/tools/">Tools</a>
+      <a href="/site/wgpu3d/">wgpu3d</a>
+      <a href="/site/resources/" aria-current="page">WebGPU resources</a>
+      <a href="/site/about/">About</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </nav>
+    <p class="footer-note">WebGPU games, tools and tutorials, with notes on how they're made.</p>
+  </div>
+</footer>
+
+</body>
+</html>

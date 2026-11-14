@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://gpuengine.github.io/site/wgpu3d/getting-started/">
+<meta property="og:url" content="https://gpuengine.github.io/site/wgpu3d/getting-started/">
+<meta property="og:site_name" content="gpuengine">
+<meta property="og:image" content="https://gpuengine.github.io/site/media/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<script src="/site/site.js" defer></script>
+<script src="/site/code-highlight.js" defer></script>
+
+<title>Your First wgpu3d Scene — WebGPU 3D in 30 Lines | gpuengine</title>
+<meta name="description" content="Start with wgpu3d: create a WebGPU scene with a ground, a spinning cube, a bobbing sphere and a glowing beacon, light it with the sun and look around with an orbit camera.">
+<meta property="og:title" content="Your First wgpu3d Scene">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2026-11-08">
+<script type="importmap">{ "imports": { "wgpu3d": "/wgpu3d-0.1.0.min.js" } }</script>
+<link rel="modulepreload" href="/wgpu3d-0.1.0.min.js">
+<script type="module" src="/site/wgpu3d/demo-runner.js"></script>
+<script type="application/ld+json">
+[
+  { "@context": "https://schema.org", "@type": "TechArticle", "headline": "Your first wgpu3d scene", "description": "Objects, meshes, materials, behaviors and an orbit camera with the wgpu3d WebGPU library.", "datePublished": "2026-11-08", "author": { "@type": "Person", "name": "Abhishek Sengar" }, "publisher": { "@type": "Organization", "name": "gpuengine", "url": "https://gpuengine.github.io/" }, "url": "https://gpuengine.github.io/site/wgpu3d/getting-started/" },
+  { "@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [ { "@type": "ListItem", "position": 1, "name": "wgpu3d", "item": "https://gpuengine.github.io/site/wgpu3d/" }, { "@type": "ListItem", "position": 2, "name": "Your first wgpu3d scene", "item": "https://gpuengine.github.io/site/wgpu3d/getting-started/" } ] }
+]
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/site/tutorials/" data-nav-section>Tutorials</a>
+    <a href="/site/articles/" data-nav-section>Articles</a>
+    <a href="/site/games/" data-nav-section>Games</a>
+    <a href="/site/tools/" data-nav-section>Tools</a>
+    <a class="site-nav-cta" href="/site/wgpu3d/" aria-current="true" data-nav-section>wgpu3d</a>
+    <a class="site-nav-about" href="/site/about/" data-nav-section><svg class="site-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.42 0-8 2.24-8 5v2h16v-2c0-2.76-3.58-5-8-5Z"/></svg>About</a>
+  </nav>
+</header>
+
+<main id="main">
+  <article class="article">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/wgpu3d/">wgpu3d</a> / Tutorial 1</nav>
+    <h1>Your first wgpu3d scene</h1>
+    <p class="article-meta"><time datetime="2026-11-08">8 November 2026</time><span>5 min read</span><span>wgpu3d · Basics</span></p>
+    <p class="article-lead">This tutorial builds the smallest interesting wgpu3d scene: a ground, three shapes that move on their own, sunlight with shadows, and a camera you can drag around. It covers the four ideas everything else is built from: the app, objects, meshes and behaviors.</p>
+
+    <figure class="wgpu3d-demo" data-wgpu3d-demo="start-demo-code">
+      <div class="wgpu3d-demo-stage">
+        <canvas id="start-demo" aria-label="A cube, a sphere and a beacon on a field, lit by morning sun"></canvas>
+        <button class="wgpu3d-demo-start" type="button">▶ Run the demo</button>
+        <p class="wgpu3d-demo-message" hidden></p>
+      </div>
+      <figcaption>Drag to look around, scroll or pinch to zoom. This runs the exact code below.</figcaption>
+    </figure>
+
+    <h2 id="code">The whole program</h2>
+<pre><code id="start-demo-code" data-language="js">import { createApp, SceneObject, MeshBuilder, createGround, material, spin, bob } from "wgpu3d";
+
+const app = await createApp({ canvas: document.querySelector("#start-demo"), environment: "morning" });
+
+app.add(createGround({ size: 60, tiles: 12 }));
+
+const cube = new SceneObject({
+  mesh: new MeshBuilder().box({ size: [1.6, 1.6, 1.6], material: material("#ff8a3d", { gloss: 0.4 }) }).toMesh(),
+  position: [-3.2, 1.3, 0]
+});
+cube.addBehavior(spin(0.8));
+
+const ball = new SceneObject({
+  mesh: new MeshBuilder().sphere({ radius: 1, sides: 28, rings: 18, material: material("#3d8bff", { gloss: 0.9 }) }).toMesh(),
+  position: [0, 1.6, 0]
+});
+ball.addBehavior(bob({ height: 0.5, speed: 2 }));
+
+const beacon = new SceneObject({
+  mesh: new MeshBuilder()
+    .cylinder({ center: [0, 0.6, 0], radius: 0.55, height: 1.2, material: material("#e8e2da") })
+    .cone({ center: [0, 1.9, 0], radius: 0.8, height: 1.4, material: material("#4ade80", { glow: 0.5 }) })
+    .toMesh(),
+  position: [3.2, 0, 0]
+});
+
+app.add(cube, ball, beacon);
+app.orbit({ target: [0, 1, 0], distance: 11, pitch: 0.35, autoRotateSpeed: 0.15 });
+app.start();</code></pre>
+
+    <h2 id="app">The app</h2>
+    <p><code>createApp</code> does the WebGPU setup: it asks the browser for a GPU device, sizes the canvas to its pixels, and creates a <code>scene</code>, a <code>camera</code> and an <code>input</code> object. It is asynchronous because getting a GPU device is, which is why the program uses <code>await</code> at the top level of a module. The <code>environment</code> option picks one of five lighting presets; <code>"morning"</code> has a low sun, so shadows are long.</p>
+    <p><code>app.start()</code> begins the frame loop. Each frame runs every behavior, updates positions, moves the camera and draws. When the canvas is scrolled out of view the loop keeps time but skips the work, so a page with several demos stays cool.</p>
+
+    <h2 id="objects">Objects and meshes</h2>
+    <p>A <code>SceneObject</code> is anything in the world. It has a position, a rotation (<code>yaw</code>, <code>pitch</code> and <code>roll</code>) and a scale, and optionally a <code>mesh</code> to draw. A mesh is just triangles, and <code>MeshBuilder</code> is how you make them: chain shape calls like <code>box</code>, <code>sphere</code>, <code>cylinder</code> and <code>cone</code>, then finish with <code>toMesh()</code>. The beacon shows that one mesh can hold several shapes, each with its own position inside the object.</p>
+    <p>Meshes are built once and drawn many times. Moving or rotating an object never rebuilds its mesh; the GPU applies the object's transform as it draws.</p>
+
+    <h2 id="materials">Materials</h2>
+    <p><code>material(color, options)</code> describes a surface. wgpu3d has no textures, so a material is a colour plus two numbers. <code>gloss</code> runs from 0 for chalky to 1 for polished; glossy surfaces get a sharp sun highlight and reflect the sky at grazing angles, which is why the blue sphere picks up a bright rim. <code>glow</code> makes a surface give off its own colour, like the green beacon. Glowing surfaces stay bright in shadow and fade less in fog, but they do not light anything around them.</p>
+
+    <h2 id="behaviors">Behaviors</h2>
+    <p>A behavior is code that runs on an object every frame. <code>spin</code> and <code>bob</code> are two small built-in ones. Your own behavior is just a function that receives the object and a context with the frame time:</p>
+<pre><code data-language="js">cube.addBehavior((object, { deltaSeconds, timeSeconds }) =&gt; {
+  object.yaw += deltaSeconds;
+  object.scale = [1, 1 + Math.sin(timeSeconds * 3) * 0.2, 1];
+});</code></pre>
+    <p>Behaviors are how the car and character in the next tutorials work, too: <code>VehicleController</code> and <code>CharacterController</code> are behaviors that read the keyboard instead of a clock.</p>
+
+    <h2 id="camera">The orbit camera</h2>
+    <p><code>app.orbit()</code> puts an orbit camera on the canvas: drag to circle the <code>target</code>, scroll or pinch to change <code>distance</code>. <code>autoRotateSpeed</code> turns it slowly on its own, in radians per second. The camera's target is also where the shadow map is centred, so shadows are sharpest where you are looking.</p>
+
+    <h2 id="next">Next</h2>
+    <p>The <a href="/site/wgpu3d/drive-a-car/">next tutorial</a> swaps the shapes for a street and a car you drive with the keyboard.</p>
+
+    <nav class="article-pager" aria-label="More tutorials">
+      <a href="/site/wgpu3d/" rel="prev"><small>Back to</small>wgpu3d overview</a>
+      <a href="/site/wgpu3d/drive-a-car/" rel="next"><small>Tutorial 2</small>Make a drivable car</a>
+    </nav>
+  </article>
+</main>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="/site/tutorials/">Tutorials</a>
+      <a href="/site/articles/">Articles</a>
+      <a href="/site/games/">Games</a>
+      <a href="/site/tools/">Tools</a>
+      <a href="/site/wgpu3d/">wgpu3d</a>
+      <a href="/site/resources/">WebGPU resources</a>
+      <a href="/site/about/">About</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </nav>
+    <p class="footer-note">WebGPU games, tools and tutorials, with notes on how they're made.</p>
+  </div>
+</footer>
+
+</body>
+</html>

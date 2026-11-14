@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>WebGPU Camera &amp; Matrices — Model, View and Projection | WebGPU Tutorial</title>
+<meta name="description" content="Learn 3D in WebGPU: model, view and projection matrices, column-major mat4x4f uniforms, perspective and lookAt in plain JavaScript, and a spinning cube.">
+<meta property="og:title" content="WebGPU Camera &amp; Matrices — Model, View and Projection">
+<meta property="og:type" content="article">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "WebGPU Camera & Matrices — Model, View and Projection",
+    "description": "Draw a 3D cube in WebGPU with model, view and projection matrices written in plain JavaScript.",
+    "proficiencyLevel": "Beginner",
+    "url": "{{canonical}}"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Tutorials", "item": "{{origin}}/site/tutorials/" },
+      { "@type": "ListItem", "position": 2, "name": "Camera & matrices", "item": "{{canonical}}" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+{{include header.html}}
+<div class="doc">
+  {{include tutorial-sidebar.html}}
+  <main id="main">
+    <article>
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/tutorials/">Tutorials</a> / Going 3D</nav>
+      <h1>WebGPU <span class="lesson-title-accent">Camera &amp; Matrices</span></h1>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/uniforms-bind-groups/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/depth-buffer/" rel="next">Next ❯</a>
+      </nav>
+
+      <p class="lesson-intro">A <strong>matrix</strong> is a grid of numbers that moves, turns or scales every vertex in one step.</p>
+      <p>Three matrices turn a 3D model into a picture on the screen: the <strong>model</strong>, the <strong>view</strong> and the <strong>projection</strong>. In this lesson you will write them in plain JavaScript and draw a spinning cube.</p>
+
+      <figure class="example-demo">
+        <iframe src="/site/tutorials/examples/perspective-cube.html" title="A spinning cube with a different colour on each face" loading="lazy"></iframe>
+        <figcaption>A cube drawn with model, view and projection matrices.</figcaption>
+      </figure>
+
+      <h2>Model, View and Projection</h2>
+      <p>Each matrix does one job:</p>
+      <table class="reference-table">
+        <thead><tr><th>Matrix</th><th>Question it answers</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Model</strong></td><td>Where is the object, and how is it turned?</td><td>Spin the cube</td></tr>
+          <tr><td><strong>View</strong></td><td>Where is the camera, and where is it looking?</td><td>Camera above and in front</td></tr>
+          <tr><td><strong>Projection</strong></td><td>How does 3D become flat?</td><td>Far things look smaller</td></tr>
+        </tbody>
+      </table>
+      <p>You multiply them together into one <strong>model-view-projection</strong> matrix. The vertex shader multiplies each position by it, and the result is a clip-space position, just like the <code>vec4f</code> you returned in earlier lessons.</p>
+
+      <h2>4×4 Matrices in a Float32Array</h2>
+      <p>A 4×4 matrix has 16 numbers. In JavaScript, store them in a <code>Float32Array(16)</code>.</p>
+      <p>WGSL reads matrices in <dfn>column-major</dfn> order. That means the first 4 numbers are the first <strong>column</strong>, not the first row. The number at row <code>row</code> and column <code>column</code> lives at index <code>column * 4 + row</code>.</p>
+<pre><code data-language="js">const identity = new Float32Array([
+  1, 0, 0, 0,
+  0, 1, 0, 0,
+  0, 0, 1, 0,
+  0, 0, 0, 1
+]);</code></pre>
+      <p>This is the <dfn>identity</dfn> matrix. It changes nothing, like multiplying by 1.</p>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        Because the array is column-major, each line of numbers in the code is a column. A move (translation) sits in indices 12, 13 and 14, which looks like the bottom row in the code.
+      </div>
+
+      <h2>Multiplying Matrices</h2>
+      <p>Multiplying two matrices gives one matrix that does both jobs. The right-hand matrix happens <strong>first</strong>. So <code>multiply(projection, view)</code> means "apply the view, then the projection".</p>
+<pre><code data-language="js">function multiply(a, b) {
+  const result = new Float32Array(16);
+  for (let column = 0; column &lt; 4; column++) {
+    for (let row = 0; row &lt; 4; row++) {
+      let sum = 0;
+      for (let k = 0; k &lt; 4; k++) {
+        sum += a[k * 4 + row] * b[column * 4 + k];
+      }
+      result[column * 4 + row] = sum;
+    }
+  }
+  return result;
+}</code></pre>
+
+      <h2>A Rotation Matrix</h2>
+      <p>A rotation uses the cosine and sine of the angle. This one turns around the Z axis, which points out of the screen, so it spins things flat in 2D:</p>
+<pre><code data-language="js">function rotationZ(angle) {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  return new Float32Array([
+    cosine, sine, 0, 0,
+    -sine, cosine, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1
+  ]);
+}</code></pre>
+      <p>In WGSL, the uniform has the type <code>mat4x4f</code>. Multiply it with the position, matrix on the left:</p>
+<pre><code data-language="wgsl">@group(0) @binding(0) var&lt;uniform&gt; transform: mat4x4f;
+
+@vertex
+fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+  let corner = corners[vertexIndex];
+  var output: VertexOutput;
+  output.position = transform * vec4f(corner, 0.0, 1.0);
+  output.color = vec3f(corner + 0.5, 0.8);
+  return output;
+}</code></pre>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Spin a square with a rotation matrix uniform:</p>
+<pre><code data-language="js">const uniformBuffer = device.createBuffer({
+  size: 16 * Float32Array.BYTES_PER_ELEMENT,
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+});
+
+function render(timeInMilliseconds) {
+  const angle = timeInMilliseconds / MILLISECONDS_PER_SECOND;
+  const aspect = canvas.width / canvas.height;
+  const transform = multiply(scaling(1 / aspect, 1, 1), rotationZ(angle));
+  device.queue.writeBuffer(uniformBuffer, 0, transform);
+  requestAnimationFrame(render);
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=matrix-rotation-2d" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <p>The <code>scaling</code> matrix squeezes x by the aspect ratio, so the square stays square on a wide canvas. It is applied after the rotation, because it is on the left.</p>
+
+      <h2>The Projection Matrix</h2>
+      <p>A <dfn>perspective</dfn> projection makes far things smaller, like a real camera. It needs four values:</p>
+      <ul>
+        <li><strong>Field of view</strong>: how wide the camera sees, in radians, from top to bottom.</li>
+        <li><strong>Aspect</strong>: the canvas width divided by its height.</li>
+        <li><strong>Near</strong> and <strong>far</strong>: the closest and farthest distances that are drawn.</li>
+      </ul>
+<pre><code data-language="js">function perspective(fieldOfView, aspect, near, far) {
+  const focalLength = 1 / Math.tan(fieldOfView / 2);
+  const depthRange = 1 / (near - far);
+  return new Float32Array([
+    focalLength / aspect, 0, 0, 0,
+    0, focalLength, 0, 0,
+    0, 0, far * depthRange, -1,
+    0, 0, near * far * depthRange, 0
+  ]);
+}</code></pre>
+      <div class="callout callout-warning">
+        <strong>Warning</strong>
+        WebGPU expects depth from <strong>0 to 1</strong>. WebGL used -1 to 1. A perspective function copied from a WebGL tutorial will clip your scene wrongly. The version above is written for WebGPU.
+      </div>
+
+      <h2>The View Matrix</h2>
+      <p>The view matrix places the camera. The easiest way to build it is <code>lookAt</code>: give it where the camera is, what it looks at, and which way is up.</p>
+<pre><code data-language="js">function lookAt(eye, target, up) {
+  const zAxis = normalize(subtract(eye, target));
+  const xAxis = normalize(cross(up, zAxis));
+  const yAxis = cross(zAxis, xAxis);
+  return new Float32Array([
+    xAxis[0], yAxis[0], zAxis[0], 0,
+    xAxis[1], yAxis[1], zAxis[1], 0,
+    xAxis[2], yAxis[2], zAxis[2], 0,
+    -dot(xAxis, eye), -dot(yAxis, eye), -dot(zAxis, eye), 1
+  ]);
+}
+
+const view = lookAt([0, 1.5, 4.5], [0, 0, 0], [0, 1, 0]);</code></pre>
+      <p>It works out three directions for the camera: right (<code>xAxis</code>), up (<code>yAxis</code>) and backwards (<code>zAxis</code>). Then it moves the whole world so the camera sits at the centre. The small vector helpers <code>subtract</code>, <code>cross</code>, <code>dot</code> and <code>normalize</code> are in the full example.</p>
+
+      <h2>Rotating in 3D</h2>
+      <p>To spin the cube, build the model matrix from two rotations: one around the Y axis (up) and one around the X axis (right).</p>
+<pre><code data-language="js">function rotationX(angle) {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  return new Float32Array([
+    1, 0, 0, 0,
+    0, cosine, sine, 0,
+    0, -sine, cosine, 0,
+    0, 0, 0, 1
+  ]);
+}
+
+function rotationY(angle) {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  return new Float32Array([
+    cosine, 0, -sine, 0,
+    0, 1, 0, 0,
+    sine, 0, cosine, 0,
+    0, 0, 0, 1
+  ]);
+}</code></pre>
+
+      <h2>Building the Cube</h2>
+      <p>A cube has 6 faces. Each face is 2 triangles, so the cube needs 6 × 2 × 3 = <strong>36 vertices</strong>. Every vertex has a 3D position and the colour of its face.</p>
+      <p>Each face lists its 4 corners going <strong>counter-clockwise</strong> when you look at it from outside. The order matters, as you will see below.</p>
+<pre><code data-language="js">const faces = [
+  { color: [1.0, 0.35, 0.35], corners: [[-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]] },
+  { color: [0.35, 0.85, 1.0], corners: [[1, -1, -1], [-1, -1, -1], [-1, 1, -1], [1, 1, -1]] }
+];
+const CORNER_ORDER = [0, 1, 2, 0, 2, 3];
+
+function buildCubeVertices() {
+  const vertexList = [];
+  for (const face of faces) {
+    for (const cornerIndex of CORNER_ORDER) {
+      vertexList.push(...face.corners[cornerIndex], ...face.color);
+    }
+  }
+  return new Float32Array(vertexList);
+}</code></pre>
+      <p>Only two faces are shown here. The full example has all six. <code>CORNER_ORDER</code> turns each 4-corner face into two triangles.</p>
+
+      <h2>Hiding the Back Faces</h2>
+      <p>Without help, the GPU draws all 6 faces in order. Faces on the far side can be painted over faces on the near side.</p>
+      <p>Set <code>cullMode: "back"</code> in the pipeline. WebGPU then skips every triangle whose corners appear <strong>clockwise</strong> on screen. Those are the faces pointing away from the camera.</p>
+<pre><code data-language="js">const pipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module: shaderModule, entryPoint: "vertexMain", buffers: [vertexBufferLayout] },
+  fragment: { module: shaderModule, entryPoint: "fragmentMain", targets: [{ format }] },
+  primitive: { topology: "triangle-list", cullMode: "back" }
+});</code></pre>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        Culling only works fully for a <strong>convex</strong> shape like a cube, where no face can hide another front face. For real scenes with many objects, you need the <a href="/site/tutorials/depth-buffer/">depth buffer</a>, which is the next lesson.
+      </div>
+
+      <h2>Putting It Together</h2>
+      <p>Each frame, build the model matrix from the time, combine all three matrices, and write the result into the uniform buffer:</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Draw a spinning cube with a perspective camera:</p>
+<pre><code data-language="js">const view = lookAt(CAMERA_POSITION, CAMERA_TARGET, UP_DIRECTION);
+
+function render(timeInMilliseconds) {
+  const seconds = timeInMilliseconds / MILLISECONDS_PER_SECOND;
+  const aspect = canvas.width / canvas.height;
+  const projection = perspective(FIELD_OF_VIEW, aspect, NEAR_PLANE, FAR_PLANE);
+  const model = multiply(rotationY(seconds), rotationX(seconds * 0.6));
+  const modelViewProjection = multiply(projection, multiply(view, model));
+  device.queue.writeBuffer(uniformBuffer, 0, modelViewProjection);
+  requestAnimationFrame(render);
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=perspective-cube" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <p>The vertex shader does a single multiply:</p>
+<pre><code data-language="wgsl">@group(0) @binding(0) var&lt;uniform&gt; modelViewProjection: mat4x4f;
+
+@vertex
+fn vertexMain(input: VertexInput) -> VertexOutput {
+  var output: VertexOutput;
+  output.position = modelViewProjection * vec4f(input.position, 1.0);
+  output.color = input.color;
+  return output;
+}</code></pre>
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        Multiply the matrices once in JavaScript, not in the shader. The GPU would otherwise repeat the same work for every vertex.
+      </div>
+
+      <h2>Matrix Helper Reference</h2>
+      <p>All helpers return a column-major <code>Float32Array(16)</code>:</p>
+      <table class="reference-table">
+        <thead><tr><th>Function</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>multiply(a, b)</code></td><td>One matrix that applies <code>b</code> first, then <code>a</code></td></tr>
+          <tr><td><code>perspective(fieldOfView, aspect, near, far)</code></td><td>Projection where far things look smaller. Depth 0 to 1.</td></tr>
+          <tr><td><code>lookAt(eye, target, up)</code></td><td>View matrix for a camera at <code>eye</code> looking at <code>target</code></td></tr>
+          <tr><td><code>rotationX(angle)</code></td><td>Turns around the X axis (tilts forward and back)</td></tr>
+          <tr><td><code>rotationY(angle)</code></td><td>Turns around the Y axis (spins left and right)</td></tr>
+          <tr><td><code>rotationZ(angle)</code></td><td>Turns around the Z axis (spins flat on the screen)</td></tr>
+          <tr><td><code>scaling(x, y, z)</code></td><td>Stretches or squeezes along each axis</td></tr>
+        </tbody>
+      </table>
+      <p>Angles are in radians. A full turn is <code>2 * Math.PI</code>.</p>
+
+      <h2>Exercises</h2>
+      <div class="exercise">
+        <p>1. In a column-major <code>Float32Array(16)</code>, which index holds row 1, column 2?</p>
+        <details><summary>Show answer</summary><p><code>2 * 4 + 1 = 9</code></p></details>
+      </div>
+      <div class="exercise">
+        <p>2. You want the model to rotate first, then the view, then the projection. Write the multiply call.</p>
+        <details><summary>Show answer</summary><pre><code data-language="js">const modelViewProjection = multiply(projection, multiply(view, model));</code></pre></details>
+      </div>
+      <div class="exercise">
+        <p>3. In the cube example, move the camera further away so the cube looks smaller.</p>
+        <details><summary>Show answer</summary><pre><code data-language="js">const CAMERA_POSITION = [0, 2.5, 8];</code></pre></details>
+      </div>
+      <div class="exercise">
+        <p>4. In the cube example, change <code>cullMode</code> to <code>"front"</code>. What do you see, and why?</p>
+        <details><summary>Show answer</summary><p>You see the inside of the cube. Now the faces pointing <strong>towards</strong> the camera are skipped, and only the far faces are drawn.</p></details>
+      </div>
+
+      <h2>Summary</h2>
+      <ul>
+        <li>The <strong>model</strong> matrix places the object, the <strong>view</strong> matrix places the camera, and the <strong>projection</strong> matrix adds perspective.</li>
+        <li>WGSL matrices are column-major. Store them in a <code>Float32Array(16)</code> and send them as a <code>mat4x4f</code> uniform.</li>
+        <li>In <code>multiply(a, b)</code>, <code>b</code> happens first.</li>
+        <li>WebGPU projection uses depth from 0 to 1.</li>
+        <li>A cube is 36 vertices with counter-clockwise faces. <code>cullMode: "back"</code> hides the faces pointing away.</li>
+      </ul>
+
+      {{official-links}}
+
+      <nav class="lesson-nav lesson-nav-bottom" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/uniforms-bind-groups/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/depth-buffer/" rel="next">Next ❯</a>
+      </nav>
+    </article>
+  </main>
+</div>
+{{include footer.html}}
+</body>
+</html>

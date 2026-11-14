@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://gpuengine.github.io/site/tutorials/first-triangle/">
+<meta property="og:url" content="https://gpuengine.github.io/site/tutorials/first-triangle/">
+<meta property="og:site_name" content="gpuengine">
+<meta property="og:image" content="https://gpuengine.github.io/site/media/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<script src="/site/site.js" defer></script>
+<script src="/site/code-highlight.js" defer></script>
+
+<title>WebGPU First Triangle — Hello World in WebGPU | WebGPU Tutorial</title>
+<meta name="description" content="Draw your first triangle with WebGPU: get a device, configure the canvas, write WGSL shaders, build a render pipeline and submit a render pass. Step by step, with runnable examples.">
+<meta property="og:title" content="WebGPU First Triangle — Hello World in WebGPU">
+<meta property="og:type" content="article">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "WebGPU First Triangle — Hello World in WebGPU",
+    "description": "The smallest complete WebGPU program, built step by step.",
+    "proficiencyLevel": "Beginner",
+    "url": "https://gpuengine.github.io/site/tutorials/first-triangle/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Tutorials", "item": "https://gpuengine.github.io/site/tutorials/" },
+      { "@type": "ListItem", "position": 2, "name": "Your first triangle", "item": "https://gpuengine.github.io/site/tutorials/first-triangle/" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/site/tutorials/" aria-current="true" data-nav-section>Tutorials</a>
+    <a href="/site/articles/" data-nav-section>Articles</a>
+    <a href="/site/games/" data-nav-section>Games</a>
+    <a href="/site/tools/" data-nav-section>Tools</a>
+    <a class="site-nav-cta" href="/site/wgpu3d/" data-nav-section>wgpu3d</a>
+    <a class="site-nav-about" href="/site/about/" data-nav-section><svg class="site-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.42 0-8 2.24-8 5v2h16v-2c0-2.76-3.58-5-8-5Z"/></svg>About</a>
+  </nav>
+</header>
+
+<div class="doc">
+  <nav class="doc-sidebar" aria-label="Tutorials">
+  <a class="doc-sidebar-home" href="/site/tutorials/">WebGPU Tutorial Home</a>
+  <p class="doc-sidebar-heading">Getting started</p>
+  <a href="/site/tutorials/webgpu-intro/">1. What is WebGPU?</a>
+  <a href="/site/tutorials/first-triangle/" aria-current="page">2. Your first triangle</a>
+  <a href="/site/tutorials/wgsl-basics/">3. WGSL basics</a>
+  <a href="/site/tutorials/vertex-buffers/">4. Vertex buffers</a>
+  <a href="/site/tutorials/uniforms-bind-groups/">5. Uniforms &amp; bind groups</a>
+  <p class="doc-sidebar-heading">Going 3D</p>
+  <a href="/site/tutorials/camera-matrices/">6. Camera &amp; matrices</a>
+  <a href="/site/tutorials/depth-buffer/">7. Depth buffer</a>
+  <a href="/site/tutorials/textures-samplers/">8. Textures &amp; samplers</a>
+  <a href="/site/tutorials/instancing/">9. Instancing</a>
+  <p class="doc-sidebar-heading">Advanced</p>
+  <a href="/site/tutorials/compute-shaders/">10. Compute shaders</a>
+  <a href="/site/tutorials/shadow-mapping/">11. Shadow mapping</a>
+  <a href="/site/tutorials/post-processing/">12. Post-processing</a>
+  <p class="doc-sidebar-heading">Practice</p>
+  <a href="/site/tutorials/playground/?example=first-triangle" target="_blank">Playground</a>
+  <a href="/site/resources/">Official docs &amp; resources</a>
+</nav>
+
+  <main id="main">
+    <article>
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/tutorials/">Tutorials</a> / Getting started</nav>
+      <h1>WebGPU <span class="lesson-title-accent">First Triangle</span></h1>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/webgpu-intro/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/wgsl-basics/" rel="next">Next ❯</a>
+      </nav>
+
+      <p class="lesson-intro">The triangle is the "Hello World" of GPU programming.</p>
+      <p>Drawing one triangle uses every core part of WebGPU. Once it works, everything else in this tutorial is a variation of it.</p>
+
+      <figure class="example-demo">
+        <iframe src="/site/tutorials/examples/first-triangle.html" title="A green triangle drawn with WebGPU" loading="lazy"></iframe>
+        <figcaption>The result of this lesson, running live.</figcaption>
+      </figure>
+
+      <h2>The Steps</h2>
+      <p>Every WebGPU program follows the same steps:</p>
+      <ol>
+        <li>Get a <strong>device</strong></li>
+        <li>Connect the device to a <strong>canvas</strong></li>
+        <li>Write the <strong>shaders</strong></li>
+        <li>Create a <strong>pipeline</strong></li>
+        <li>Record and submit a <strong>render pass</strong></li>
+      </ol>
+
+      <h2>Step 1: Get a Device</h2>
+      <p>The <dfn>adapter</dfn> is the GPU. The <dfn>device</dfn> is your own connection to it. You create everything else from the device.</p>
+<pre><code data-language="js">const adapter = await navigator.gpu.requestAdapter();
+const device = await adapter.requestDevice();</code></pre>
+
+      <h2>Step 2: Configure the Canvas</h2>
+      <p>WebGPU draws into a normal <code>&lt;canvas&gt;</code> element. Ask it for a <code>"webgpu"</code> context and tell it which device and colour format to use.</p>
+<pre><code data-language="js">const canvas = document.querySelector("canvas");
+canvas.width = canvas.clientWidth * devicePixelRatio;
+canvas.height = canvas.clientHeight * devicePixelRatio;
+
+const context = canvas.getContext("webgpu");
+const format = navigator.gpu.getPreferredCanvasFormat();
+context.configure({ device, format });</code></pre>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        Setting <code>canvas.width</code> and <code>canvas.height</code> to the displayed size times <code>devicePixelRatio</code> keeps the result sharp on high-resolution screens.
+      </div>
+
+      <h2>Clearing the Canvas</h2>
+      <p>Before drawing a triangle, try the simplest possible WebGPU program: fill the canvas with one colour.</p>
+      <p>GPU work is <strong>recorded</strong> into a command encoder, then <strong>submitted</strong> to the device queue. A <dfn>render pass</dfn> says which texture to draw into and what to do with it first.</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Clear the canvas to blue:</p>
+<pre><code data-language="js">const encoder = device.createCommandEncoder();
+const pass = encoder.beginRenderPass({
+  colorAttachments: [{
+    view: context.getCurrentTexture().createView(),
+    clearValue: { r: 0.1, g: 0.3, b: 0.6, a: 1 },
+    loadOp: "clear",
+    storeOp: "store"
+  }]
+});
+pass.end();
+device.queue.submit([encoder.finish()]);</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=clear-canvas" target="_blank">Edit &amp; Run »</a>
+      </div>
+
+      <table class="reference-table">
+        <thead><tr><th>Property</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>view</code></td><td>The texture to draw into. <code>getCurrentTexture()</code> returns the canvas texture for this frame.</td></tr>
+          <tr><td><code>clearValue</code></td><td>The colour to fill with. Each channel goes from 0 to 1.</td></tr>
+          <tr><td><code>loadOp</code></td><td><code>"clear"</code> fills with <code>clearValue</code>. <code>"load"</code> keeps what was there.</td></tr>
+          <tr><td><code>storeOp</code></td><td><code>"store"</code> keeps the result. <code>"discard"</code> throws it away.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Step 3: Write the Shaders</h2>
+      <p>Shaders are small programs that run on the GPU. They are written in <abbr title="WebGPU Shading Language">WGSL</abbr>. A triangle needs two:</p>
+      <ul>
+        <li>The <strong>vertex shader</strong> runs once per corner and returns its position.</li>
+        <li>The <strong>fragment shader</strong> runs once per pixel inside the triangle and returns its colour.</li>
+      </ul>
+<pre><code data-language="wgsl">@vertex
+fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4f {
+  let corners = array(
+    vec2f( 0.0,  0.6),
+    vec2f(-0.6, -0.5),
+    vec2f( 0.6, -0.5)
+  );
+  return vec4f(corners[vertexIndex], 0.0, 1.0);
+}
+
+@fragment
+fn fragmentMain() -> @location(0) vec4f {
+  return vec4f(0.49, 0.95, 0.61, 1.0);
+}</code></pre>
+      <p>Positions are in <dfn>clip space</dfn>: x goes from −1 (left) to 1 (right), and y from −1 (bottom) to 1 (top), whatever the canvas size.</p>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        The corners are written inside the shader for now. In <a href="/site/tutorials/vertex-buffers/">Lesson 4</a> you will send them from JavaScript in a vertex buffer.
+      </div>
+
+      <h2>Step 4: Create a Pipeline</h2>
+      <p>A <dfn>render pipeline</dfn> combines the shaders with the settings needed to run them. You create it once and reuse it every frame.</p>
+<pre><code data-language="js">const shaderModule = device.createShaderModule({ code: shaderCode });
+
+const pipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module: shaderModule, entryPoint: "vertexMain" },
+  fragment: { module: shaderModule, entryPoint: "fragmentMain", targets: [{ format }] }
+});</code></pre>
+      <p>The <code>format</code> in <code>targets</code> must match the canvas format.</p>
+
+      <h2>Step 5: Draw</h2>
+      <p>Inside the render pass, set the pipeline and draw 3 vertices. The vertex shader runs 3 times, with <code>vertex_index</code> 0, 1 and 2.</p>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Draw a green triangle:</p>
+<pre><code data-language="js">const encoder = device.createCommandEncoder();
+const pass = encoder.beginRenderPass({
+  colorAttachments: [{
+    view: context.getCurrentTexture().createView(),
+    clearValue: { r: 0.05, g: 0.06, b: 0.07, a: 1 },
+    loadOp: "clear",
+    storeOp: "store"
+  }]
+});
+pass.setPipeline(pipeline);
+pass.draw(3);
+pass.end();
+device.queue.submit([encoder.finish()]);</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=first-triangle" target="_blank">Edit &amp; Run »</a>
+      </div>
+
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        If nothing appears, open the browser console. WebGPU prints a detailed message explaining which call was invalid and why.
+      </div>
+
+      <h2>Exercises</h2>
+      <div class="exercise">
+        <p>1. Make the triangle orange.</p>
+        <details><summary>Show answer</summary><p>Change the fragment shader's return value:</p><pre><code data-language="wgsl">return vec4f(1.0, 0.55, 0.1, 1.0);</code></pre></details>
+      </div>
+      <div class="exercise">
+        <p>2. Make the triangle point down.</p>
+        <details><summary>Show answer</summary><p>Flip the sign of every y value:</p><pre><code data-language="wgsl">vec2f( 0.0, -0.6),
+vec2f(-0.6,  0.5),
+vec2f( 0.6,  0.5)</code></pre></details>
+      </div>
+      <div class="exercise">
+        <p>3. Which shader runs once per pixel?</p>
+        <details><summary>Show answer</summary><p>The fragment shader.</p></details>
+      </div>
+
+      <h2>Summary</h2>
+      <ul>
+        <li><strong>Adapter → device → canvas context</strong> connects JavaScript, the GPU and the page.</li>
+        <li>The <strong>vertex shader</strong> places corners; the <strong>fragment shader</strong> colours pixels.</li>
+        <li>A <strong>pipeline</strong> is created once. Each frame you <strong>encode</strong> a render pass and <strong>submit</strong> it.</li>
+      </ul>
+
+      <h2 id="official-docs">Official documentation</h2>
+<p class="official-links-lead">Go deeper with the specifications and reference documentation:</p>
+<ul class="cards official-cards"><li><a class="card" href="https://developer.mozilla.org/en-US/docs/Web/API/GPUAdapter/requestDevice" rel="noopener external"><span class="card-kicker">developer.mozilla.org</span><h3>MDN: GPUAdapter.requestDevice()</h3><p>Getting a device, with the optional features and limits you can ask for.</p></a></li><li><a class="card" href="https://developer.mozilla.org/en-US/docs/Web/API/GPUCanvasContext/configure" rel="noopener external"><span class="card-kicker">developer.mozilla.org</span><h3>MDN: GPUCanvasContext.configure()</h3><p>Connecting a canvas to the device, with format and alpha mode options.</p></a></li><li><a class="card" href="https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createRenderPipeline" rel="noopener external"><span class="card-kicker">developer.mozilla.org</span><h3>MDN: GPUDevice.createRenderPipeline()</h3><p>Every field of the render pipeline descriptor.</p></a></li><li><a class="card" href="https://www.w3.org/TR/webgpu/#render-passes" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WebGPU specification: render passes</h3><p>How render passes, attachments, load and store operations work.</p></a></li></ul>
+
+      <nav class="lesson-nav lesson-nav-bottom" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/webgpu-intro/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/wgsl-basics/" rel="next">Next ❯</a>
+      </nav>
+    </article>
+  </main>
+</div>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="/site/tutorials/">Tutorials</a>
+      <a href="/site/articles/">Articles</a>
+      <a href="/site/games/">Games</a>
+      <a href="/site/tools/">Tools</a>
+      <a href="/site/wgpu3d/">wgpu3d</a>
+      <a href="/site/resources/">WebGPU resources</a>
+      <a href="/site/about/">About</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </nav>
+    <p class="footer-note">WebGPU games, tools and tutorials, with notes on how they're made.</p>
+  </div>
+</footer>
+
+</body>
+</html>

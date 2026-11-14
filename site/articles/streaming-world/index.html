@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://gpuengine.github.io/site/articles/streaming-world/">
+<meta property="og:url" content="https://gpuengine.github.io/site/articles/streaming-world/">
+<meta property="og:site_name" content="gpuengine">
+<meta property="og:image" content="https://gpuengine.github.io/site/media/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<script src="/site/site.js" defer></script>
+<script src="/site/code-highlight.js" defer></script>
+
+<title>Streaming an open world with Web Workers | gpuengine Articles</title>
+<meta name="description" content="How City Drive builds its world around the car without stutter: a fixed pool of GPU vertex slots, a road-walking visibility search, and geometry built in Web Workers.">
+<meta property="og:title" content="Streaming an open world with Web Workers">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2026-10-13">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Streaming an open world with Web Workers",
+    "description": "How City Drive streams geometry around the car using fixed GPU vertex slots and Web Workers with transferable buffers.",
+    "datePublished": "2026-10-13",
+    "author": { "@type": "Person", "name": "Abhishek Sengar" },
+    "publisher": { "@type": "Organization", "name": "gpuengine", "url": "https://gpuengine.github.io/" },
+    "url": "https://gpuengine.github.io/site/articles/streaming-world/",
+    "image": "https://gpuengine.github.io/site/media/articles/streaming-world-island.jpg"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Articles", "item": "https://gpuengine.github.io/site/articles/" },
+      { "@type": "ListItem", "position": 2, "name": "Streaming an open world", "item": "https://gpuengine.github.io/site/articles/streaming-world/" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/site/tutorials/" data-nav-section>Tutorials</a>
+    <a href="/site/articles/" aria-current="true" data-nav-section>Articles</a>
+    <a href="/site/games/" data-nav-section>Games</a>
+    <a href="/site/tools/" data-nav-section>Tools</a>
+    <a class="site-nav-cta" href="/site/wgpu3d/" data-nav-section>wgpu3d</a>
+    <a class="site-nav-about" href="/site/about/" data-nav-section><svg class="site-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.42 0-8 2.24-8 5v2h16v-2c0-2.76-3.58-5-8-5Z"/></svg>About</a>
+  </nav>
+</header>
+
+<main id="main">
+  <article class="article">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/articles/">Articles</a> / City Drive</nav>
+    <h1>Streaming an open world with Web Workers</h1>
+    <p class="article-meta"><time datetime="2026-10-13">13 October 2026</time><span>12 min read</span><span>WebGPU · Web Workers · Performance</span></p>
+
+    <p class="article-lead">The <a href="/site/articles/procedural-city/">previous article</a> showed how <a href="/site/games/city-drive/">City Drive</a> describes an endless city. Describing it is the easy part. This one covers how the game turns that description into GPU geometry around a moving car, aiming for 60 frames per second, without the main thread ever stopping to build a block of buildings.</p>
+
+    <nav class="article-toc" aria-label="Contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#budget">A fixed budget: 180 slots</a></li>
+        <li><a href="#visible">Choosing what to build</a></li>
+        <li><a href="#slots">Claiming and releasing slots</a></li>
+        <li><a href="#workers">Workers that run the game's own scripts</a></li>
+        <li><a href="#mirror">Keeping the road graph in sync</a></li>
+        <li><a href="#transfer">Getting vertices back to the GPU</a></li>
+        <li><a href="#fallback">When there are no workers</a></li>
+        <li><a href="#drawing">Drawing the slots</a></li>
+        <li><a href="#scale">Adaptive render scale</a></li>
+        <li><a href="#costs">What this design costs</a></li>
+      </ol>
+    </nav>
+
+    <figure class="article-figure">
+      <img src="/site/media/articles/streaming-world-island.jpg" alt="Top-down view from high above the car: a long strip of city with towers, parks and fields, branching at junctions, surrounded by lake water" width="1600" height="900" loading="lazy">
+      <figcaption>Everything that exists at one moment, seen from 470 metres up. All 180 slots were full when this was taken. Beyond the streamed roads there is only lake, which is itself cut off by the camera's 520 metre far plane.</figcaption>
+    </figure>
+
+    <h2 id="budget">A fixed budget: 180 slots</h2>
+    <p>The whole streaming system starts from a handful of constants in <code>geometry.js</code>:</p>
+<pre><code data-language="js">const FLOATS_PER_VERT = 15;
+const STREET_FRAME_FLOAT_OFFSET = 12;
+const BYTES_PER_VERT = FLOATS_PER_VERT * 4;
+const MAX_SEGMENTS = 180;
+const VERTS_PER_SEGMENT = 7200;
+const DYNAMIC_MESH_MAX_VERTS = 16200;
+const STREAMED_SLOT_VERTS = MAX_SEGMENTS * VERTS_PER_SEGMENT;
+const DYNAMIC_VERT_OFFSET = STREAMED_SLOT_VERTS;
+const TOTAL_BUFFER_VERTS = DYNAMIC_VERT_OFFSET + DYNAMIC_MESH_MAX_VERTS;</code></pre>
+    <p>The world is cut into <em>items</em>: one road segment (4.2 metres of road plus everything beside it) or one junction. At most 180 items exist at once, and each gets a <em>slot</em>: a fixed range of 7,200 vertices in one big vertex buffer that the renderer creates once at start-up and never resizes.</p>
+    <p>Each vertex is 15 floats, 60 bytes: position, normal, colour, then material, variant and an occlusion term, then three "street frame" floats: distance along the road, distance across it, and the road's half-width packed with lamp flags, which the shaders use for street lighting. There is no index buffer for world geometry; every triangle is three full vertices. A slot is therefore 432,000 bytes, the 180 slots 77.76 MB, and with the dynamic region for the car, traffic, particles and lake on the end the buffer is 78.7 MB.</p>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 800 210" role="img" aria-labelledby="buffer-svg-title" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+        <title id="buffer-svg-title">Layout of the single vertex buffer: 180 fixed slots of 7,200 vertices followed by a 16,200-vertex dynamic region</title>
+        <g stroke="currentColor" stroke-opacity="0.5" fill="currentColor" fill-opacity="0.08">
+          <rect x="30" y="60" width="80" height="50"/>
+          <rect x="110" y="60" width="80" height="50"/>
+          <rect x="190" y="60" width="80" height="50"/>
+          <rect x="270" y="60" width="80" height="50" fill-opacity="0"/>
+          <rect x="350" y="60" width="80" height="50"/>
+          <rect x="560" y="60" width="80" height="50"/>
+        </g>
+        <rect x="640" y="60" width="130" height="50" stroke-width="2" style="stroke: var(--accent)" fill="none"/>
+        <g fill="currentColor" fill-opacity="0.35">
+          <rect x="30" y="60" width="62" height="50"/>
+          <rect x="110" y="60" width="44" height="50"/>
+          <rect x="190" y="60" width="74" height="50"/>
+          <rect x="350" y="60" width="30" height="50"/>
+          <rect x="560" y="60" width="55" height="50"/>
+        </g>
+        <g fill="currentColor" text-anchor="middle">
+          <text x="70" y="50">slot 0</text>
+          <text x="150" y="50">slot 1</text>
+          <text x="230" y="50">slot 2</text>
+          <text x="310" y="50">slot 3</text>
+          <text x="390" y="50">slot 4</text>
+          <text x="495" y="90">. . .</text>
+          <text x="600" y="50">slot 179</text>
+          <text x="705" y="50">dynamic</text>
+          <text x="310" y="90" fill-opacity="0.7">free</text>
+          <text x="705" y="82" font-size="11">car, traffic,</text>
+          <text x="705" y="97" font-size="11">particles, lake</text>
+        </g>
+        <g fill="currentColor" fill-opacity="0.8">
+          <text x="30" y="140">each slot: 7,200 vertices x 60 bytes = 432,000 bytes, rewritten as a whole</text>
+          <text x="30" y="160">shaded part: vertices actually used (slotCounts[slot]); one draw call per filled slot</text>
+          <text x="30" y="180">dynamic region: 16,200 vertices, rewritten every frame</text>
+        </g>
+      </svg>
+      <figcaption>One GPU buffer, carved into equal slots. A slot never grows or moves; a new item simply overwrites the start of a free slot.</figcaption>
+    </figure>
+
+    <p>Uploading a slot is a single <code>writeBuffer</code> at a computed offset, copied from <code>renderer.js</code>:</p>
+<pre><code data-language="js">uploadSegmentSlot(slotIndex, floatData, vertCount) {
+  const vertexCount = Math.min(Math.max(0, Math.floor(vertCount)), VERTS_PER_SEGMENT);
+  this.slotCounts[slotIndex] = vertexCount;
+  this.slotsVersion++;
+  if (!this.device || vertexCount === 0) return;
+  this.recordSlotCenter(slotIndex, floatData, vertexCount);
+  const byteOffset = slotIndex * VERTS_PER_SEGMENT * BYTES_PER_VERT;
+  this.device.queue.writeBuffer(this.vertexBuffer, byteOffset, floatData.buffer, floatData.byteOffset, vertexCount * BYTES_PER_VERT);
+}</code></pre>
+    <p>Only the used part of the slot is written, and <code>slotCounts</code> records how many vertices to draw. Clearing a slot does not touch the GPU at all: <code>clearSegmentSlot</code> sets the count to zero and the stale vertices are simply never drawn.</p>
+    <p>Fixed slots trade memory for simplicity. There is no allocator, no fragmentation and no buffer recreation mid-drive. The price is that every slot reserves room for its worst case, and a busy segment that needs more than 7,200 vertices is silently cut short.</p>
+
+    <h2 id="visible">Choosing what to build</h2>
+    <p>Each frame, <code>streamWorldAroundCar</code> in <code>world_streaming.js</code> does three things on different clocks:</p>
+<pre><code data-language="js">function streamWorldAroundCar(car, renderer, dt) {
+  updateCarLocation(car);
+  segmentStreaming.secondsUntilVisibleRefresh -= dt;
+  if (segmentStreaming.secondsUntilVisibleRefresh &lt;= 0) {
+    segmentStreaming.secondsUntilVisibleRefresh = VISIBLE_REFRESH_INTERVAL_SECONDS;
+    syncVisibleSlots(renderer);
+  }
+  segmentStreaming.secondsUntilEviction -= dt;
+  if (segmentStreaming.secondsUntilEviction &lt;= 0) {
+    segmentStreaming.secondsUntilEviction = GRAPH_EVICTION_INTERVAL_SECONDS;
+    evictFarGraph(car);
+  }
+  processPendingBuilds(renderer, SEGMENT_BUILDS_PER_FRAME);
+}</code></pre>
+    <p>Every 0.25 seconds it recomputes the visible set, every two seconds it evicts road graph far behind the car, and every frame it pushes pending builds forward.</p>
+    <p>The visible set is not a radius around the car. A city seen from a road is mostly the road itself, so <code>computeVisibleSet</code> walks <em>along the roads</em>. It starts "walkers" at the car's segment, one heading forward and one backward, plus walkers on any other road whose nearest point is within 140 metres. Then, like Dijkstra's algorithm, it repeatedly advances the cheapest walker by one segment:</p>
+<pre><code data-language="js">while (items.length &lt; MAX_SEGMENTS &amp;&amp; walkers.length) {
+  let cheapestIndex = 0;
+  for (let index = 1; index &lt; walkers.length; index++) {
+    if (walkers[index].cost &lt; walkers[cheapestIndex].cost) cheapestIndex = index;
+  }
+  const walker = walkers[cheapestIndex];
+  if (walker.cost &gt; MAX_VIEW_COST) break;</code></pre>
+    <p>When a walker runs off the end of an edge it adds that junction as an item and starts new walkers down each of the junction's other arms. This is also where the road graph grows: adding a junction calls <code>ensureJunctionArms</code>, which creates the roads leaving it. Every step adds 4.2 metres times the walker's weight to its cost. Forward walkers weigh 1.0 and walkers behind the car weigh 2.6, so the city reaches about 760 metres ahead but only about 290 behind. When the car is on a junction, arms leading sideways get 1.4. The walk stops at the cost limit or when 180 items have been found, whichever comes first.</p>
+    <p>The result is a list ordered from cheapest to most expensive, which doubles as a priority list for building.</p>
+
+    <h2 id="slots">Claiming and releasing slots</h2>
+    <p>Items have stable keys: <code>edge.id * 128 + segmentIndex</code> for segments and <code>-junction.id</code> for junctions. <code>syncVisibleSlots</code> compares the new visible set against the keys in the slots:</p>
+    <ol>
+      <li>Any slot whose key is no longer wanted is released: its key is forgotten, its collision obstacles are dropped and the renderer zeroes its vertex count.</li>
+      <li>Pending builds for released items are filtered out.</li>
+      <li>Each newly visible item pops a free slot and joins the pending list.</li>
+      <li>The pending list is sorted by walk cost, so the road right in front of the car is built before a tower 600 metres away.</li>
+    </ol>
+    <p>Items that stay visible keep their slot and are not rebuilt. One exception: when a new edge appears, <code>queueRebuildOfSlotsNear</code> requeues existing items within 142 metres of it, because the new road may now cut through land where an older segment put buildings. Those segments rebuild with that side cleared.</p>
+
+    <h2 id="workers">Workers that run the game's own scripts</h2>
+    <p>Building one segment means running the full city generator for 4.2 metres of road: lots, towers, bridges, trees, collision boxes, terrain draping. Doing up to 180 of those on the main thread would stall a frame. So <code>world_build_service.js</code> starts one Web Worker, or two if <code>navigator.hardwareConcurrency</code> reports at least six cores.</p>
+    <p>The worker file, <code>world_build_worker.js</code>, is only 78 lines. It contains no city code at all. Instead the main thread tells it which scripts to load, by listing every script tag on the page that lives in the game folder, minus a deny-list of files that touch the DOM, WebGPU or audio:</p>
+<pre><code data-language="js">function spawnWorldBuildWorker() {
+  const worker = new Worker(WORLD_BUILD_WORKER_URL);
+  const entry = { worker, isLoaded: false, graphSignature: null, edgeIdsKnownToWorker: new Set(), inFlightCount: 0 };
+  worker.onmessage = (event) =&gt; handleWorkerMessage(entry, event.data);
+  worker.onerror = () =&gt; disableWorldBuildService();
+  worker.postMessage({ type: "load", worldSeed: WORLD_SEED, scriptUrls: worldBuildScriptUrls() });
+  return entry;
+}</code></pre>
+<pre><code data-language="js">function loadWorldScripts({ worldSeed, scriptUrls }) {
+  self.presetWorldSeed = worldSeed;
+  importScripts(...scriptUrls);
+  workerBuildState.geometryBuffer = new Float32Array(VERTS_PER_SEGMENT * FLOATS_PER_VERT);
+  workerBuildState.isLoaded = true;
+  self.postMessage({ type: "loaded" });
+}</code></pre>
+    <p>This works because the game is written as plain global scripts. <code>importScripts</code> runs the same files, in the same order, inside the worker, so the worker has exactly the same functions as the page. Setting <code>presetWorldSeed</code> first makes <code>environment.js</code> pick up the page's seed instead of rolling a new one, and since the city's contents are a pure function of seed and position, the worker builds exactly what the main thread would have built. There is one copy of the generator, not two.</p>
+    <p>The workers start early. <code>app_shell.js</code> asks for the tree meshes and leaf atlas before the WebGPU device even exists, and that request launches the workers. The foliage assets are built on a worker, while the GPU initialises, and posted back with their buffers transferred.</p>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 800 300" role="img" aria-labelledby="flow-svg-title" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+        <title id="flow-svg-title">Sequence of one segment build: main thread sends graph changes and a build request, the worker builds into its scratch buffer, slices and transfers the vertices, and the main thread writes them to the GPU</title>
+        <defs>
+          <marker id="flow-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        </defs>
+        <g fill="currentColor" font-size="13">
+          <text x="20" y="40">main thread</text>
+          <text x="20" y="250">build worker</text>
+        </g>
+        <g stroke="currentColor" stroke-opacity="0.35">
+          <line x1="130" y1="35" x2="780" y2="35"/>
+          <line x1="130" y1="245" x2="780" y2="245"/>
+        </g>
+        <g fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-opacity="0.5">
+          <rect x="140" y="50" width="150" height="44" rx="4"/>
+          <rect x="300" y="190" width="230" height="44" rx="4"/>
+          <rect x="580" y="50" width="200" height="44" rx="4"/>
+        </g>
+        <g fill="currentColor">
+          <text x="150" y="68">visible set, claim</text>
+          <text x="150" y="84">slot, sort by cost</text>
+          <text x="310" y="208">build segment into scratch</text>
+          <text x="310" y="224">buffer, drape on terrain</text>
+          <text x="588" y="68">check request is current,</text>
+          <text x="588" y="84">writeBuffer into slot</text>
+        </g>
+        <g fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#flow-arrow)">
+          <path d="M220 96 L 300 188"/>
+          <path d="M520 190 L 600 96"/>
+        </g>
+        <g fill="currentColor" fill-opacity="0.85">
+          <text x="40" y="140">graphChanges (if any)</text>
+          <text x="40" y="156">+ build {requestId,</text>
+          <text x="40" y="172">edgeId, segmentIndex}</text>
+          <text x="595" y="140">built: vertexData</text>
+          <text x="595" y="156">(ArrayBuffer transferred),</text>
+          <text x="595" y="172">trees, obstacles</text>
+        </g>
+        <text x="20" y="290" fill="currentColor" fill-opacity="0.7">up to 3 requests in flight per worker; the main thread keeps rendering while the worker builds</text>
+      </svg>
+      <figcaption>One build round trip. The main thread only decides and uploads; the worker does all the geometry work.</figcaption>
+    </figure>
+
+    <h2 id="mirror">Keeping the road graph in sync</h2>
+    <p>There is a catch. The road graph grows on the main thread, inside the visibility walk, and the worker needs it to build anything. Its edges and junctions point at each other, so they cannot be posted as they are. <code>road_graph_mirror.js</code> flattens them into records where object references become ids, and sends only what changed:</p>
+<pre><code data-language="js">function syncRoadGraphToWorker(entry) {
+  const signature = `${roadGraph.nextId}:${roadGraph.edges.size}:${roadGraph.junctions.size}`;
+  if (entry.graphSignature === signature) return;
+  entry.graphSignature = signature;
+  entry.worker.postMessage({ type: "graphChanges", changes: describeRoadGraphChanges(entry.edgeIdsKnownToWorker) });
+}</code></pre>
+    <p>Before each build request, the service compares a cheap signature of the graph with the last one that worker saw. If it changed, it sends a <code>graphChanges</code> message first. Each worker entry remembers the edge ids it already has, so only new edges are sent in full (with their node arrays) and removed edges are sent as ids. Junctions and the per-node "hide this side" flags are sent in full every time, the flags packed two bits per node in a <code>Uint8Array</code>. On the worker, <code>applyRoadGraphChanges</code> rebuilds the references and recomputes each node's block info locally, which is cheaper than sending it.</p>
+    <p>Because both messages go down the same channel, the worker always applies the graph change before it sees the build request that depends on it. Message ordering does the synchronisation; there are no locks or shared memory.</p>
+
+    <h2 id="transfer">Getting vertices back to the GPU</h2>
+    <p>The worker builds into one reusable 432,000-byte scratch buffer, then copies out only the used part and transfers it:</p>
+<pre><code data-language="js">function buildRequestedSlot(request) {
+  const built = request.edgeId !== undefined ? buildEdgeSegment(request) : buildJunction(request);
+  if (!built) {
+    self.postMessage({ type: "built", requestId: request.requestId, isMissing: true });
+    return;
+  }
+  const { vertexCount, trees, anchorUpdates } = built;
+  const vertexData = workerBuildState.geometryBuffer.slice(0, vertexCount * FLOATS_PER_VERT);
+  self.postMessage({ type: "built", requestId: request.requestId, vertexData, vertexCount, trees, anchorUpdates }, [vertexData.buffer]);
+}</code></pre>
+    <p>The <code>slice</code> makes one compact copy on the worker. Listing <code>vertexData.buffer</code> as a transferable then moves that memory to the main thread without a second copy. Tree instances and <code>anchorUpdates</code> are small and go through the normal structured clone. <code>anchorUpdates</code> carries data the main thread needs back: collision obstacles produced while building, and the side-hiding flags the build may have changed.</p>
+    <p>On the main thread, a result is applied only if it still matters:</p>
+<pre><code data-language="js">function isCurrentSlotRequest(request, requestId) {
+  const streaming = segmentStreaming;
+  return streaming.latestRequestBySlot.get(request.slot) === requestId &amp;&amp; streaming.slotItems[request.slot] === request.item;
+}
+
+function applyWorkerBuild(renderer, request, result) {
+  if (!isCurrentSlotRequest(request, result.requestId)) return;
+  segmentStreaming.latestRequestBySlot.delete(request.slot);
+  Object.assign(slotItemAnchor(request.item), result.anchorUpdates);
+  renderer.uploadSegmentSlot(request.slot, result.vertexData, result.vertexCount);
+  renderer.setSlotTrees(request.slot, result.trees);
+}</code></pre>
+    <p>If the car turned and the slot now holds a different item, or the item was requeued and a newer request is pending, the old result is thrown away. The transferred buffer goes straight into <code>writeBuffer</code>; there is no JavaScript copy on the main thread at all.</p>
+    <p>Each worker may have three requests in flight, and new requests go to the least busy loaded worker. If the edge or junction was evicted before the worker got to it, the worker replies <code>isMissing</code> and the main thread falls back to building that item itself.</p>
+
+    <h2 id="fallback">When there are no workers</h2>
+    <p>The service is defensive. If <code>Worker</code> is undefined, if creating one throws, if a worker fires <code>onerror</code>, or if no worker has reported "loaded" within ten seconds, <code>disableWorldBuildService</code> terminates them all and hands every in-flight request back to the main thread. From then on <code>processPendingBuilds</code> builds on the main thread, five items per frame, into its own scratch buffer. The game still runs; it just has a heavier main thread.</p>
+    <p>Start-up uses the same machinery. <code>app_shell.js</code> does not render until <code>isInitialWorldBuilt()</code> is true: slots exist, nothing is pending and nothing is in flight. About eleven seconds after loading seed 412 for these screenshots, the graph had seven edges and eight junctions, and all 180 slots were in use.</p>
+
+    <h2 id="drawing">Drawing the slots</h2>
+    <p>Slots are drawn with one <code>draw</code> call each, straight out of the shared buffer using <code>firstVertex</code>:</p>
+<pre><code data-language="js">for (const slotIndex of slotOrder) {
+  if (this.slotCounts[slotIndex] &gt; 0) pass.draw(this.slotCounts[slotIndex], 1, slotIndex * VERTS_PER_SEGMENT, 0);
+}</code></pre>
+    <p>That is up to 180 draws per pass, and there are up to three passes: a sun shadow pass when the shadow map needs refreshing, a depth pre-pass and the main pass. Slots are sorted nearest-first using the centre of each slot's bounding box, recorded during upload, which helps the GPU reject hidden fragments early. The sort is cached until a slot changes or the camera moves more than 4 metres.</p>
+    <p>Two tricks keep the slots valid for longer. Road, shoulder, stripe and water colours are written into vertices as a negative red channel holding a slot number, and the shader swaps in the current weather colour from a uniform, so the whole city changes from dry to wet without re-uploading anything. And trees are not in the slots at all: each build returns instance records, and the renderer draws them with instanced meshes.</p>
+
+    <h2 id="scale">Adaptive render scale</h2>
+    <p>Streaming keeps CPU spikes off the main thread, but the GPU can still fall behind. <code>app_shell.js</code> keeps a smoothed frame time and, every two seconds, adjusts a render scale that multiplies the canvas resolution:</p>
+<pre><code data-language="js">function chooseRenderScale(averageFrameSeconds, renderScale) {
+  const targetFrameSeconds = activeTargetFrameSeconds();
+  if (averageFrameSeconds &gt; targetFrameSeconds * SLOW_FRAME_RATIO) return Math.max(MIN_RENDER_SCALE, renderScale * RENDER_SCALE_STEP_DOWN);
+  if (averageFrameSeconds &lt; targetFrameSeconds * FAST_FRAME_RATIO) return Math.min(1.0, renderScale * RENDER_SCALE_STEP_UP);
+  return renderScale;
+}</code></pre>
+    <p>An average more than 25% over target shrinks the scale by 12%, down to 0.55; an average under 1.035 times the target grows it by 6%, up to 1. Shrinking fast and growing slowly avoids oscillating. The target comes from a performance profile: "full" aims for 60 fps with a device pixel ratio capped at 1.5, "cool" aims for 30 fps at ratio 1.0 with lower shadow and bloom settings, and on battery the frame rate is capped at 45. Scaling is paused while recording a video.</p>
+
+    <section class="article-takeaways" aria-labelledby="takeaways-heading">
+      <h2 id="takeaways-heading">Key takeaways</h2>
+      <ul>
+        <li>A fixed pool of equal vertex slots in one buffer removes allocation and fragmentation from streaming entirely.</li>
+        <li>Choose what to stream by walking the road network with costs, not by radius, and build the cheapest items first.</li>
+        <li>If your game is plain scripts, <code>importScripts</code> can run the same generator in a worker. One codebase, two threads.</li>
+        <li>Send graph diffs keyed by id, transfer vertex buffers, and drop results whose slot has moved on.</li>
+        <li>Always keep a main-thread fallback, and do not render until the first world is ready.</li>
+      </ul>
+    </section>
+
+    <h2 id="costs">What this design costs</h2>
+    <p><strong>Memory up front.</strong> 78.7 MB of vertex buffer is reserved whether the slots are busy or not, and most segments use far fewer than 7,200 vertices.</p>
+    <p><strong>No level of detail for slots.</strong> A segment 700 metres away is built at the same detail as the one under the car. The shaders fade fine detail and road markings with distance, but the vertices are still built, uploaded and processed.</p>
+    <p><strong>Main-thread work is not zero.</strong> The visibility walk, graph growth, graph diffing and <code>writeBuffer</code> calls all stay on the main thread. The walk picks the cheapest walker with a linear scan, which is fine for a few dozen walkers. Junction records are re-sent in full on every graph change. I did not profile how much any of this costs in practice.</p>
+    <p><strong>Silent overflow.</strong> Both <code>pushTriangle</code> and <code>uploadSegmentSlot</code> clamp to the slot size without warning. That keeps the game running, but a too-busy segment shows up as missing geometry, not an error.</p>
+    <p>The same pattern would suit any streamed world with cheap, deterministic generation: give each piece a stable key, make its contents a pure function of that key, and let workers do the building. How the car drives on this freshly built road is the subject of the <a href="/site/articles/car-physics/">next article</a>.</p>
+
+    <nav class="article-pager" aria-label="More articles">
+      <a href="/site/articles/procedural-city/" rel="prev"><small>Previous article</small>Building a procedural city in WebGPU</a>
+      <a href="/site/articles/car-physics/" rel="next"><small>Next article</small>Car physics without a physics engine</a>
+    </nav>
+  </article>
+</main>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="/site/tutorials/">Tutorials</a>
+      <a href="/site/articles/">Articles</a>
+      <a href="/site/games/">Games</a>
+      <a href="/site/tools/">Tools</a>
+      <a href="/site/wgpu3d/">wgpu3d</a>
+      <a href="/site/resources/">WebGPU resources</a>
+      <a href="/site/about/">About</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </nav>
+    <p class="footer-note">WebGPU games, tools and tutorials, with notes on how they're made.</p>
+  </div>
+</footer>
+
+</body>
+</html>

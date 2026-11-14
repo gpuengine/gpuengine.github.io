@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://gpuengine.github.io/site/articles/gpu-text-search/">
+<meta property="og:url" content="https://gpuengine.github.io/site/articles/gpu-text-search/">
+<meta property="og:site_name" content="gpuengine">
+<meta property="og:image" content="https://gpuengine.github.io/site/media/og-image.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#110e0c">
+<link rel="icon" href="/site/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/site/styles.css">
+<script src="/site/site.js" defer></script>
+<script src="/site/code-highlight.js" defer></script>
+
+<title>Searching Text with a WebGPU Compute Shader | gpuengine Articles</title>
+<meta name="description" content="How the gpuengine JSON viewer searches tens of megabytes of text on the GPU: packing text into buffers, a WGSL compute shader that tests every position in parallel, atomics, readback and mapping hits back to JSON nodes.">
+<meta property="og:title" content="Searching Text with a WebGPU Compute Shader">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2026-11-07">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Searching Text with a WebGPU Compute Shader",
+    "description": "How the gpuengine JSON viewer runs full-text search in a WGSL compute shader.",
+    "datePublished": "2026-11-07",
+    "author": { "@type": "Person", "name": "Abhishek Sengar" },
+    "publisher": { "@type": "Organization", "name": "gpuengine", "url": "https://gpuengine.github.io/" },
+    "url": "https://gpuengine.github.io/site/articles/gpu-text-search/",
+    "image": "https://gpuengine.github.io/site/media/json-viewer-screenshot.jpg"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Articles", "item": "https://gpuengine.github.io/site/articles/" },
+      { "@type": "ListItem", "position": 2, "name": "Searching text with a compute shader", "item": "https://gpuengine.github.io/site/articles/gpu-text-search/" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+  <nav class="site-nav" aria-label="Main">
+    <a href="/site/tutorials/" data-nav-section>Tutorials</a>
+    <a href="/site/articles/" aria-current="true" data-nav-section>Articles</a>
+    <a href="/site/games/" data-nav-section>Games</a>
+    <a href="/site/tools/" data-nav-section>Tools</a>
+    <a class="site-nav-cta" href="/site/wgpu3d/" data-nav-section>wgpu3d</a>
+    <a class="site-nav-about" href="/site/about/" data-nav-section><svg class="site-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.42 0-8 2.24-8 5v2h16v-2c0-2.76-3.58-5-8-5Z"/></svg>About</a>
+  </nav>
+</header>
+
+<main id="main">
+  <article class="article">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/articles/">Articles</a> / Tools</nav>
+    <h1>Searching text with a compute shader</h1>
+    <p class="article-meta"><time datetime="2026-11-07">7 November 2026</time><span>9 min read</span><span>WebGPU · Compute · WGSL</span></p>
+
+    <p class="article-lead">The <a href="/site/json-viewer/">JSON viewer</a> on this site has no CPU search at all. When you type in its search box, a WebGPU compute shader checks every character position of the document at once. This article walks through how that works, what it costs, and where the GPU really helps.</p>
+
+    <nav class="article-toc" aria-label="Contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#idea">The idea: one thread per position</a></li>
+        <li><a href="#packing">Getting text into a GPU buffer</a></li>
+        <li><a href="#shader">The search shader</a></li>
+        <li><a href="#dispatch">Dispatching millions of threads</a></li>
+        <li><a href="#readback">Reading the results back</a></li>
+        <li><a href="#nodes">From offsets to JSON nodes</a></li>
+        <li><a href="#numbers">The numbers</a></li>
+        <li><a href="#lessons">What I would tell my past self</a></li>
+      </ol>
+    </nav>
+
+    <figure class="article-figure">
+      <img src="/site/media/json-viewer-screenshot.jpg" alt="The JSON viewer with a search for title highlighted in the tree and the WebGPU search time shown in the status bar" width="1920" height="987" loading="lazy">
+      <figcaption>Search matches highlighted in the tree. The status bar reports how long the GPU search took.</figcaption>
+    </figure>
+
+    <h2 id="idea">The idea: one thread per position</h2>
+    <p>The simplest search algorithm asks, for every position in the text, "does the query start here?" On a CPU that is a loop, and engines speed it up with clever skipping. On a GPU we can skip the cleverness: start one thread for every position, let each thread compare a few characters, and keep the threads that match.</p>
+    <p>A 30 MB document has about 30 million positions. That sounds like a lot of threads, but it is exactly the kind of work GPUs are built for: millions of tiny, identical, independent jobs.</p>
+
+    <h2 id="packing">Getting text into a GPU buffer</h2>
+    <p>Shaders cannot read JavaScript strings. The text has to be copied into a GPU buffer first, and WGSL storage buffers are arrays of 32-bit words. So each word holds several characters.</p>
+    <p>Most JSON is plain ASCII, where every character fits in one byte. <code>TextEncoder.encodeInto</code> converts the string to bytes very quickly, and if it wrote exactly one byte per character, the text is ASCII and four characters fit in each word. Otherwise the code falls back to UTF-16, two characters per word, so that character offsets on the GPU match string offsets in JavaScript.</p>
+<pre><code data-language="js">function packText(text) {
+  const asciiBytes = new Uint8Array(roundUpToMultiple(text.length, BYTES_PER_WORD));
+  const { read, written } = new TextEncoder().encodeInto(text, asciiBytes);
+  if (read === text.length &amp;&amp; written === text.length) {
+    return { words: new Uint32Array(asciiBytes.buffer), encoding: TEXT_ENCODING.ASCII };
+  }
+  const codeUnits = new Uint16Array(roundUpToMultiple(text.length, TEXT_ENCODING.UTF16.unitsPerWord));
+  for (let position = 0; position &lt; text.length; position++) codeUnits[position] = text.charCodeAt(position);
+  return { words: new Uint32Array(codeUnits.buffer), encoding: TEXT_ENCODING.UTF16 };
+}</code></pre>
+    <p>The packed buffer is uploaded once per document and kept on the GPU. Typing a new query does not upload the text again; only the short query buffer changes.</p>
+
+    <h2 id="shader">The search shader</h2>
+    <p>Every thread works out which position it owns, then compares the query against the text from that position. The first mismatch ends the thread. A thread that gets through the whole query has found a match.</p>
+<pre><code data-language="wgsl">fn unitAt(position: u32) -> u32 {
+  let word = textWords[position / parameters.unitsPerWord];
+  let shift = (position % parameters.unitsPerWord) * parameters.unitBits;
+  let mask = (1u &lt;&lt; parameters.unitBits) - 1u;
+  let unit = (word >> shift) &amp; mask;
+  if (parameters.foldsCase == 1u &amp;&amp; unit >= 65u &amp;&amp; unit &lt;= 90u) {
+    return unit + 32u;
+  }
+  return unit;
+}
+
+@compute @workgroup_size(256)
+fn findMatches(@builtin(global_invocation_id) invocation: vec3u) {
+  let position = invocation.x + invocation.y * parameters.workgroupsPerRow * 256u;
+  if (position + parameters.queryLength > parameters.textLength) {
+    return;
+  }
+  for (var offset = 0u; offset &lt; parameters.queryLength; offset++) {
+    if (unitAt(position + offset) != queryUnits[offset]) {
+      return;
+    }
+  }
+  let slot = atomicAdd(&amp;matchCount, 1u);
+  if (slot &lt; parameters.maxMatches) {
+    matchOffsets[slot] = position;
+  }
+}</code></pre>
+    <p>Three details matter:</p>
+    <ul>
+      <li><strong>Unpacking.</strong> <code>unitAt</code> pulls one character out of its word with a shift and a mask. The same shader handles 8-bit and 16-bit text through the <code>unitBits</code> parameter.</li>
+      <li><strong>Case folding.</strong> For case-insensitive search, uppercase ASCII letters become lowercase on the fly. The query is folded the same way in JavaScript before upload. Folding other alphabets correctly needs Unicode tables, so the viewer asks you to turn on match case for those queries instead of giving wrong answers.</li>
+      <li><strong>Collecting matches.</strong> Thousands of threads may find matches at the same moment. <code>atomicAdd</code> hands each one a unique slot in the output array, and the counter keeps going past the array's size so we still know the true total.</li>
+    </ul>
+
+    <h2 id="dispatch">Dispatching millions of threads</h2>
+    <p>Threads are launched in workgroups of 256. A 30-million-character document needs about 117,000 workgroups, but WebGPU allows at most 65,535 workgroups in one dimension. The fix is a two-dimensional dispatch: fill rows of 65,535 workgroups and add rows until every position is covered. The shader turns its 2D id back into a single position.</p>
+<pre><code data-language="js">const totalWorkgroups = Math.ceil(textLength / WORKGROUP_SIZE);
+const workgroupsPerRow = Math.min(totalWorkgroups, MAX_WORKGROUPS_PER_DIMENSION);
+const rowCount = Math.ceil(totalWorkgroups / workgroupsPerRow);
+pass.dispatchWorkgroups(workgroupsPerRow, rowCount);</code></pre>
+    <p>Threads past the end of the text exit on the first line of the shader, so rounding up is harmless.</p>
+
+    <h2 id="readback">Reading the results back</h2>
+    <p>GPU buffers used by shaders cannot be read from JavaScript directly. After the dispatch, the counter and the offsets are copied into two small buffers created with <code>MAP_READ</code>, and <code>mapAsync</code> waits until the GPU has finished. Matches arrive in whatever order the threads happened to finish, so the offsets are sorted before use. A typed-array sort of even 200,000 numbers takes a few milliseconds.</p>
+    <p>The viewer stores at most 200,000 raw matches. Beyond that the tree would be unusable anyway, and the status line shows a "+" so you know the list is capped.</p>
+
+    <h2 id="nodes">From offsets to JSON nodes</h2>
+    <p>The GPU only knows character positions. The viewer needs to know which key or value each match belongs to. The parser already recorded, for every node, where its key and value start and end in the text, in document order. That order makes the lookup a binary search: for each offset, find the last node that starts at or before it, then check whether the offset falls inside that node's key or its value.</p>
+    <p>Matches in punctuation, such as a query of <code>":</code>, land between tokens and are dropped. Consecutive hits inside the same node collapse into one result, so searching for <code>a</code> in <code>"banana"</code> gives one match, not three.</p>
+    <p>All of this runs in a Web Worker, together with the parser, so the page never freezes while a search runs.</p>
+
+    <h2 id="numbers">The numbers</h2>
+    <p>These timings were measured in Chrome on an Apple-silicon Mac. Each one covers the whole search as the viewer reports it: the GPU pass, the readback and the mapping to nodes.</p>
+    <table class="reference-table">
+      <thead><tr><th>Document</th><th>Search</th><th>Time</th></tr></thead>
+      <tbody>
+        <tr><td>1 KB sample</td><td>"lisbon" or "title", 1 to 3 matches</td><td>8 to 18 ms</td></tr>
+        <tr><td>27 MB, 2.4 million nodes</td><td>"user 299998", first search</td><td>about 80 ms</td></tr>
+        <tr><td>31 MB, case-insensitive</td><td>"EXAMPLE.COM", capped at 200,000 matches</td><td>about 78 ms</td></tr>
+      </tbody>
+    </table>
+    <p>The tiny sample is the honest lesson here: 8 to 18 milliseconds to search one kilobyte is slow. A plain <code>indexOf</code> would finish in microseconds. The fixed cost of talking to the GPU, creating buffers, submitting work and waiting for the readback, dominates small inputs.</p>
+    <p>On large documents the picture flips. Search time barely grows with size, because the extra positions are spread across thousands of GPU threads. Case-insensitive search with hundreds of thousands of matches costs about the same as a single-match search, which is exactly the case where CPU code slows down.</p>
+
+    <section class="article-takeaways" aria-labelledby="takeaways-heading">
+      <h2 id="takeaways-heading">Key takeaways</h2>
+      <ul>
+        <li>Brute force is a good fit for the GPU: one thread per position, no clever skipping needed.</li>
+        <li>Upload the data once and keep it on the GPU. Only the query changes between searches.</li>
+        <li>Use <code>atomicAdd</code> to give matching threads unique output slots, and sort afterwards.</li>
+        <li>WebGPU's 65,535-workgroup limit per dimension means large inputs need a 2D dispatch.</li>
+        <li>The GPU wins on big inputs and heavy matching. For tiny inputs the fixed overhead loses.</li>
+      </ul>
+    </section>
+
+    <h2 id="lessons">What I would tell my past self</h2>
+    <p>Measure the fixed overhead first. Everything interesting about GPU compute in the browser comes down to whether the work is big enough to pay for the trip. Here it is, for the files people actually struggle with in a JSON viewer.</p>
+    <p>If you want to write your own compute shaders, the <a href="/site/tutorials/compute-shaders/">compute shaders tutorial</a> covers storage buffers, dispatches and readback step by step, with examples you can edit and run.</p>
+
+    <h2 id="official-docs">Official documentation</h2>
+<p class="official-links-lead">Go deeper with the specifications and reference documentation:</p>
+<ul class="cards official-cards"><li><a class="card" href="https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createComputePipeline" rel="noopener external"><span class="card-kicker">developer.mozilla.org</span><h3>MDN: GPUDevice.createComputePipeline()</h3><p>Compute pipelines, the basis of GPU search.</p></a></li><li><a class="card" href="https://www.w3.org/TR/webgpu/#buffer-mapping" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WebGPU specification: buffer mapping</h3><p>The rules for reading GPU results back to JavaScript.</p></a></li><li><a class="card" href="https://www.w3.org/TR/WGSL/#compute-shader-workgroups" rel="noopener external"><span class="card-kicker">w3.org</span><h3>WGSL specification: compute shader workgroups</h3><p>How invocations are grouped and identified.</p></a></li></ul>
+
+    <nav class="article-pager" aria-label="More articles">
+      <a href="/site/articles/webgpu-vs-webgl/" rel="prev"><small>Previous article</small>WebGPU vs WebGL: real numbers</a>
+      <a href="/site/articles/" rel="next"><small>All articles</small>Back to the list</a>
+    </nav>
+  </article>
+</main>
+<footer class="site-footer">
+  <div class="footer-inner">
+    <a class="logo" href="/"><img class="logo-mark" src="/site/logo-mark.svg" alt="" width="28" height="28">gpu<span>engine</span></a>
+    <nav class="footer-nav" aria-label="Footer">
+      <a href="/site/tutorials/">Tutorials</a>
+      <a href="/site/articles/">Articles</a>
+      <a href="/site/games/">Games</a>
+      <a href="/site/tools/">Tools</a>
+      <a href="/site/wgpu3d/">wgpu3d</a>
+      <a href="/site/resources/">WebGPU resources</a>
+      <a href="/site/about/">About</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </nav>
+    <p class="footer-note">WebGPU games, tools and tutorials, with notes on how they're made.</p>
+  </div>
+</footer>
+
+</body>
+</html>

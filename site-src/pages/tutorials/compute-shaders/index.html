@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>WebGPU Compute Shaders — Storage Buffers and Workgroups | WebGPU Tutorial</title>
+<meta name="description" content="Learn WebGPU compute shaders: @compute and @workgroup_size, storage buffers, createComputePipeline, dispatchWorkgroups and reading results back with mapAsync.">
+<meta property="og:title" content="WebGPU Compute Shaders — Storage Buffers and Workgroups">
+<meta property="og:type" content="article">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "WebGPU Compute Shaders — Storage Buffers and Workgroups",
+    "description": "General-purpose GPU work in WebGPU with compute shaders, explained with runnable examples.",
+    "proficiencyLevel": "Intermediate",
+    "url": "{{canonical}}"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Tutorials", "item": "{{origin}}/site/tutorials/" },
+      { "@type": "ListItem", "position": 2, "name": "Compute shaders", "item": "{{canonical}}" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+{{include header.html}}
+<div class="doc">
+  {{include tutorial-sidebar.html}}
+  <main id="main">
+    <article>
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/tutorials/">Tutorials</a> / Advanced</nav>
+      <h1>WebGPU <span class="lesson-title-accent">Compute Shaders</span></h1>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/instancing/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/shadow-mapping/" rel="next">Next ❯</a>
+      </nav>
+
+      <p class="lesson-intro">A <strong>compute shader</strong> uses the GPU for any work you like, not only for drawing.</p>
+      <p>There are no triangles and no pixels. You give the GPU a big list of data, and thousands of small threads work on it at the same time.</p>
+
+      <figure class="example-demo">
+        <iframe src="/site/tutorials/examples/compute-particles.html" title="Thirty thousand glowing particles swirling around a moving point" loading="lazy"></iframe>
+        <figcaption>30,000 particles moved by a compute shader and drawn with instancing, every frame.</figcaption>
+      </figure>
+
+      <h2>What Is a Compute Shader?</h2>
+      <p>Vertex and fragment shaders are part of the drawing pipeline. A compute shader stands alone. It reads and writes buffers, and that is all.</p>
+      <p>Use one when you have the <strong>same small job to do on many items</strong>:</p>
+      <ul>
+        <li>Move thousands of <strong>particles</strong></li>
+        <li>Run <strong>physics</strong> for cloth, water or crowds</li>
+        <li><strong>Process images</strong>: blur, edge detection, histograms</li>
+        <li><strong>Search</strong> and sort large amounts of data</li>
+      </ul>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        The <a href="/site/json-viewer/">JSON viewer</a> on this site uses a compute shader to search large files. Every GPU thread checks a different position in the text at the same time.
+      </div>
+
+      <h2>A First Compute Shader</h2>
+      <p>This shader doubles every number in an array:</p>
+<pre><code data-language="wgsl">@group(0) @binding(0) var&lt;storage, read_write&gt; numbers: array&lt;f32&gt;;
+
+@compute @workgroup_size(64)
+fn computeMain(@builtin(global_invocation_id) id: vec3u) {
+  let index = id.x;
+  if (index &gt;= arrayLength(&amp;numbers)) {
+    return;
+  }
+  numbers[index] = numbers[index] * 2.0;
+}</code></pre>
+      <table class="reference-table">
+        <thead><tr><th>Part</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>@compute</code></td><td>Marks the entry point as a compute shader</td></tr>
+          <tr><td><code>@workgroup_size(64)</code></td><td>Each workgroup has 64 threads</td></tr>
+          <tr><td><code>global_invocation_id</code></td><td>A unique number for each thread. Use <code>.x</code> as the array index.</td></tr>
+          <tr><td><code>var&lt;storage, read_write&gt;</code></td><td>A storage buffer the shader can read and write</td></tr>
+          <tr><td><code>arrayLength(&amp;numbers)</code></td><td>The number of items in a runtime-sized array</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Workgroups</h2>
+      <p>Threads run in groups called <dfn>workgroups</dfn>. You choose the size of a group in the shader, and how many groups to start in JavaScript.</p>
+      <p>Think of a school. Each classroom (workgroup) holds 64 pupils (threads). To give one million pupils a desk, you open enough classrooms for all of them.</p>
+      <p>A size of <strong>64</strong> is a good default. It works well on most GPUs.</p>
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        Workgroups can also be 2D or 3D, for example <code>@workgroup_size(8, 8)</code> for images. Then you use <code>id.x</code> and <code>id.y</code> as pixel coordinates.
+      </div>
+
+      <h2>Storage Buffers</h2>
+      <p>A <dfn>storage buffer</dfn> is a buffer the shader can write to. Uniform buffers (from <a href="/site/tutorials/uniforms-bind-groups/">Lesson 5</a>) are small and read-only. Storage buffers can be very large and writable.</p>
+      <p>Create one with the <code>GPUBufferUsage.STORAGE</code> flag:</p>
+<pre><code data-language="js">const input = new Float32Array(1_000_000);
+for (let index = 0; index &lt; input.length; index++) {
+  input[index] = index;
+}
+
+const workBuffer = device.createBuffer({
+  size: input.byteLength,
+  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+});
+device.queue.writeBuffer(workBuffer, 0, input);</code></pre>
+      <p><code>COPY_DST</code> lets us upload the numbers. <code>COPY_SRC</code> lets us copy the results out later.</p>
+
+      <h2>The Compute Pipeline</h2>
+      <p>A <dfn>compute pipeline</dfn> is simpler than a render pipeline. It has one shader stage and no colour targets:</p>
+<pre><code data-language="js">const pipeline = device.createComputePipeline({
+  layout: "auto",
+  compute: { module: shaderModule, entryPoint: "computeMain" }
+});
+
+const bindGroup = device.createBindGroup({
+  layout: pipeline.getBindGroupLayout(0),
+  entries: [{ binding: 0, resource: { buffer: workBuffer } }]
+});</code></pre>
+
+      <h2>Dispatching Work</h2>
+      <p>Record a <dfn>compute pass</dfn> instead of a render pass. Instead of <code>draw()</code>, call <code>dispatchWorkgroups()</code> with the number of workgroups to start.</p>
+<pre><code data-language="js">const WORKGROUP_SIZE = 64;
+const workgroupCount = Math.ceil(input.length / WORKGROUP_SIZE);
+
+const encoder = device.createCommandEncoder();
+const pass = encoder.beginComputePass();
+pass.setPipeline(pipeline);
+pass.setBindGroup(0, bindGroup);
+pass.dispatchWorkgroups(workgroupCount);
+pass.end();</code></pre>
+      <p>The rule is always the same: <strong>workgroups = Math.ceil(count / workgroup size)</strong>.</p>
+      <div class="callout callout-warning">
+        <strong>Warning</strong>
+        <code>Math.ceil</code> rounds up, so you often start a few more threads than you have items. For 100 items you get 2 workgroups, which is 128 threads. That is why the shader checks <code>if (index &gt;= arrayLength(&amp;numbers)) { return; }</code>. Without this bounds check, the extra threads would work on data that is not there.
+      </div>
+
+      <h2>Reading Results Back</h2>
+      <p>JavaScript cannot read a storage buffer directly. You copy the results into a second buffer with the <code>MAP_READ</code> flag, then <dfn>map</dfn> it:</p>
+      <ol>
+        <li>Create a buffer with <code>MAP_READ | COPY_DST</code>.</li>
+        <li>Record <code>copyBufferToBuffer</code> after the compute pass.</li>
+        <li>Submit, then wait for <code>mapAsync(GPUMapMode.READ)</code>.</li>
+        <li>Read the data with <code>getMappedRange()</code>, then call <code>unmap()</code>.</li>
+      </ol>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Double one million numbers on the GPU and read them back:</p>
+<pre><code data-language="js">const resultBuffer = device.createBuffer({
+  size: input.byteLength,
+  usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+});
+
+encoder.copyBufferToBuffer(workBuffer, 0, resultBuffer, 0, input.byteLength);
+device.queue.submit([encoder.finish()]);
+
+await resultBuffer.mapAsync(GPUMapMode.READ);
+const output = new Float32Array(resultBuffer.getMappedRange().slice(0));
+resultBuffer.unmap();
+
+console.log(output[0], output[1], output[2]);</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=compute-double" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        <code>.slice(0)</code> makes a copy. After <code>unmap()</code>, the mapped memory is gone, so you must copy anything you want to keep.
+      </div>
+      <div class="callout callout-tip">
+        <strong>Tip</strong>
+        The example also times the same loop on the CPU. For simple work like doubling numbers, the CPU may win, because sending data to the GPU and back takes time. The GPU shines when the work per item is heavy, or when the data stays on the GPU, as in the next example.
+      </div>
+
+      <h2>Buffer Usages</h2>
+      <p>Every buffer says up front how it will be used. These are the flags you will meet most:</p>
+      <table class="reference-table">
+        <thead><tr><th>Usage flag</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>STORAGE</code></td><td>Bound as <code>var&lt;storage&gt;</code> in a shader. Can be written by compute shaders.</td></tr>
+          <tr><td><code>UNIFORM</code></td><td>Bound as <code>var&lt;uniform&gt;</code>. Small, read-only settings.</td></tr>
+          <tr><td><code>VERTEX</code></td><td>Used with <code>setVertexBuffer()</code></td></tr>
+          <tr><td><code>INDEX</code></td><td>Used with <code>setIndexBuffer()</code></td></tr>
+          <tr><td><code>COPY_SRC</code></td><td>Can be the source of a copy</td></tr>
+          <tr><td><code>COPY_DST</code></td><td>Can be the target of a copy or <code>writeBuffer()</code></td></tr>
+          <tr><td><code>MAP_READ</code></td><td>JavaScript can map and read it. Only combine with <code>COPY_DST</code>.</td></tr>
+          <tr><td><code>MAP_WRITE</code></td><td>JavaScript can map and write it. Only combine with <code>COPY_SRC</code>.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Compute and Render Together</h2>
+      <p>The real power comes from keeping data on the GPU. One buffer can be both a <code>STORAGE</code> buffer for a compute shader and a <code>VERTEX</code> buffer for drawing.</p>
+      <p>Each frame, a compute pass moves the particles, then a render pass draws them with <a href="/site/tutorials/instancing/">instancing</a>. The data never goes back to JavaScript.</p>
+<pre><code data-language="js">const particleBuffer = device.createBuffer({
+  size: particles.byteLength,
+  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
+});</code></pre>
+      <p>Each particle is a <code>position</code> and a <code>velocity</code>. The compute shader pulls every particle towards a moving point:</p>
+<pre><code data-language="wgsl">struct Particle {
+  position: vec2f,
+  velocity: vec2f,
+}
+
+struct Simulation {
+  attractor: vec2f,
+  deltaTime: f32,
+  aspect: f32,
+}
+
+@group(0) @binding(0) var&lt;uniform&gt; simulation: Simulation;
+@group(0) @binding(1) var&lt;storage, read_write&gt; particles: array&lt;Particle&gt;;
+
+@compute @workgroup_size(64)
+fn computeMain(@builtin(global_invocation_id) id: vec3u) {
+  let index = id.x;
+  if (index &gt;= arrayLength(&amp;particles)) {
+    return;
+  }
+
+  var particle = particles[index];
+  let toAttractor = simulation.attractor - particle.position;
+  let direction = normalize(toAttractor);
+  particle.velocity += direction * simulation.deltaTime;
+  particle.position += particle.velocity * simulation.deltaTime;
+  particles[index] = particle;
+}</code></pre>
+
+      <div class="example">
+        <h3>Example</h3>
+        <p>Run the simulation, then draw every particle as an instanced quad:</p>
+<pre><code data-language="js">function frame(now) {
+  updateSimulation(now);
+  const encoder = device.createCommandEncoder();
+
+  const computePass = encoder.beginComputePass();
+  computePass.setPipeline(computePipeline);
+  computePass.setBindGroup(0, computeBindGroup);
+  computePass.dispatchWorkgroups(Math.ceil(PARTICLE_COUNT / WORKGROUP_SIZE));
+  computePass.end();
+
+  const renderPass = encoder.beginRenderPass(renderPassDescriptor);
+  renderPass.setPipeline(renderPipeline);
+  renderPass.setBindGroup(0, renderBindGroup);
+  renderPass.setVertexBuffer(0, particleBuffer);
+  renderPass.draw(6, PARTICLE_COUNT);
+  renderPass.end();
+
+  device.queue.submit([encoder.finish()]);
+  requestAnimationFrame(frame);
+}</code></pre>
+        <a class="run-button" href="/site/tutorials/playground/?example=compute-particles" target="_blank">Edit &amp; Run »</a>
+      </div>
+      <p>The vertex buffer uses <code>stepMode: "instance"</code>, so each instance reads one particle. The full example also adds a swirl and some drag, and colours fast particles orange and slow ones blue.</p>
+      <div class="callout callout-note">
+        <strong>Note</strong>
+        WebGPU runs the compute pass before the render pass, in the order you recorded them. You do not need to wait or synchronise by hand.
+      </div>
+
+      <h2>Exercises</h2>
+      <div class="exercise">
+        <p>1. You have 1,000 items and <code>@workgroup_size(64)</code>. How many workgroups do you dispatch?</p>
+        <details><summary>Show answer</summary><p><code>Math.ceil(1000 / 64)</code> = 16 workgroups, which is 1,024 threads. The bounds check stops the last 24.</p></details>
+      </div>
+      <div class="exercise">
+        <p>2. Change the first example so it squares every number instead of doubling it.</p>
+        <details><summary>Show answer</summary><pre><code data-language="wgsl">numbers[index] = numbers[index] * numbers[index];</code></pre></details>
+      </div>
+      <div class="exercise">
+        <p>3. Which usage flags does the buffer you read back in JavaScript need?</p>
+        <details><summary>Show answer</summary><p><code>GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST</code></p></details>
+      </div>
+      <div class="exercise">
+        <p>4. In the particle example, make the particles drift down like snow instead of chasing the point.</p>
+        <details><summary>Show answer</summary><p>Replace the pull towards the attractor with a constant downward force:</p><pre><code data-language="wgsl">particle.velocity += vec2f(0.0, -0.5) * simulation.deltaTime;</code></pre></details>
+      </div>
+
+      <h2>Summary</h2>
+      <ul>
+        <li>A <strong>compute shader</strong> runs general-purpose work on the GPU, with no triangles.</li>
+        <li><code>@workgroup_size(64)</code> sets the threads per group. <code>global_invocation_id</code> tells each thread which item is its own.</li>
+        <li>Dispatch <code>Math.ceil(count / 64)</code> workgroups, and always add a <strong>bounds check</strong>.</li>
+        <li><strong>Storage buffers</strong> are large and writable. Read results back with <code>copyBufferToBuffer</code> and <code>mapAsync</code>.</li>
+        <li>Keep data on the GPU: one buffer can be <code>STORAGE</code> for compute and <code>VERTEX</code> for drawing.</li>
+      </ul>
+
+      {{official-links}}
+
+      <nav class="lesson-nav lesson-nav-bottom" aria-label="Lesson navigation">
+        <a class="lesson-button" href="/site/tutorials/instancing/" rel="prev">❮ Previous</a>
+        <a class="lesson-button" href="/site/tutorials/shadow-mapping/" rel="next">Next ❯</a>
+      </nav>
+    </article>
+  </main>
+</div>
+{{include footer.html}}
+</body>
+</html>

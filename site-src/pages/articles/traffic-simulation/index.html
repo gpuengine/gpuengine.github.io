@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+{{include head.html}}
+<title>Traffic Simulation on a Road Graph | gpuengine Articles</title>
+<meta name="description" content="How City Drive's traffic works: AI cars that follow lanes on a road graph, turn at junctions on Bézier curves, keep their distance and redraw every frame.">
+<meta property="og:title" content="Traffic Simulation on a Road Graph">
+<meta property="og:type" content="article">
+<meta property="article:published_time" content="2026-10-23">
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Traffic Simulation on a Road Graph",
+    "description": "How City Drive moves twelve AI cars and eight pedestrians along a procedural road graph, spawns them around the player and draws them each frame with WebGPU.",
+    "datePublished": "2026-10-23",
+    "author": { "@type": "Person", "name": "Abhishek Sengar" },
+    "publisher": { "@type": "Organization", "name": "gpuengine", "url": "{{origin}}/" },
+    "url": "{{canonical}}",
+    "image": "{{origin}}/site/media/articles/traffic-simulation-street.jpg"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Articles", "item": "{{origin}}/site/articles/" },
+      { "@type": "ListItem", "position": 2, "name": "Traffic simulation on a road graph", "item": "{{canonical}}" }
+    ]
+  }
+]
+</script>
+</head>
+<body>
+{{include header.html}}
+<main id="main">
+  <article class="article">
+    <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/site/articles/">Articles</a> / City Drive</nav>
+    <h1>Traffic simulation on a road graph</h1>
+    <p class="article-meta"><time datetime="2026-10-23">23 October 2026</time><span>13 min read</span><span>Gameplay · Simulation · WebGPU</span></p>
+
+    <p class="article-lead">Press T in <a href="/site/games/city-drive/">City Drive</a> and the empty streets fill with taxis, SUVs, box trucks and people on the sidewalks. All of it is run by <code>traffic.js</code>, about 300 lines with no pathfinding, no physics and no traffic-light logic. This article explains how those cars choose where to go, avoid running into each other, appear and disappear around you, and get drawn every frame.</p>
+
+    <nav class="article-toc" aria-label="Contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#pools">Twelve cars and eight people</a></li>
+        <li><a href="#graph">Driving on the road graph</a></li>
+        <li><a href="#vehicles">Vehicle types and lanes</a></li>
+        <li><a href="#junctions">Turning at junctions</a></li>
+        <li><a href="#spacing">Keeping a gap</a></li>
+        <li><a href="#spawning">Spawning around the player</a></li>
+        <li><a href="#pedestrians">Pedestrians</a></li>
+        <li><a href="#rendering">Drawing them every frame</a></li>
+        <li><a href="#toggle">The T key</a></li>
+        <li><a href="#limits">Limitations</a></li>
+      </ol>
+    </nav>
+
+    <figure class="article-figure">
+      <img src="/site/media/articles/traffic-simulation-street.jpg" alt="Chase camera behind the red player car on a city street, with a yellow taxi and a white box truck ahead in the same lane and traffic lights over a crossroad" width="1600" height="839" loading="lazy">
+      <figcaption>Traffic switched on, with the HUD hidden. A yellow cab and a box truck are ahead in the player's lane; the player's car is entering a crossroad at the 72 km/h straight-on cap.</figcaption>
+    </figure>
+
+    <h2 id="pools">Twelve cars and eight people</h2>
+    <p>The traffic system never creates or destroys objects while you drive. When the world starts, <code>initTrafficAndPedestrians</code> fills two fixed arrays, and those same twenty objects are reused for the rest of the session:</p>
+<pre><code data-language="js">const TRAFFIC_VEHICLE_COUNT = 12;
+const PEDESTRIAN_COUNT = 8;
+
+function initTrafficAndPedestrians() {
+  state.traffic = Array.from({ length: TRAFFIC_VEHICLE_COUNT }, createTrafficVehicle);
+  state.pedestrians = Array.from({ length: PEDESTRIAN_COUNT }, createPedestrian);
+}</code></pre>
+    <p>Each actor starts <em>hidden</em>, parked 50 metres underground, and a hidden actor tries to respawn every frame. Twelve cars sounds like very few, but they are only ever placed on the streamed roads around you; in a 30 second drive I logged, none was hidden at any point.</p>
+    <p>The per-frame update is short enough to quote whole:</p>
+<pre><code data-language="js">function updateTrafficAndPedestrians(dt) {
+  for (const vehicle of state.traffic) {
+    vehicle.speed = vehicle.baseSpeed;
+    slowBehindConvoyLeader(vehicle, state.traffic);
+    yieldToPlayerCar(vehicle, state.car);
+    updateVehicle(vehicle, dt);
+  }
+  for (const pedestrian of state.pedestrians) updatePedestrian(pedestrian, dt);
+}</code></pre>
+    <p>Notice the first line inside the loop. Every frame, a car's speed is reset to its preferred <code>baseSpeed</code> and then only ever reduced. There is no acceleration and no memory, so the system cannot get into a bad state, at the cost of cars that can stop instantly.</p>
+
+    <h2 id="graph">Driving on the road graph</h2>
+    <p>The city is a graph that grows as you drive (the <a href="/site/articles/procedural-city/">procedural city article</a> explains how). An <strong>edge</strong> is a road between two junctions, stored as nodes every 4.2 metres, each with a position, a heading and a sideways "right" vector. A <strong>junction</strong> has <strong>arms</strong> pointing at the edges that leave it, and each edge knows its junctions <code>ja</code> and <code>jb</code>.</p>
+    <p>So a car needs only an edge, a position along it in segments (12.5 means halfway between nodes 12 and 13) and a direction. Moving is one line, and placing the car is two helper calls:</p>
+<pre><code data-language="js">vehicle.edgePosition += (vehicle.travelDirection * vehicle.speed * dt) / SEG_LENGTH;
+if (vehicle.edgePosition >= vehicle.edge.segmentCount || vehicle.edgePosition &lt;= 0) {
+  beginVehicleCrossing(vehicle);
+  return;
+}
+if (!isSegmentStreamed(vehicle.edge, vehicle.edgePosition)) {
+  respawnVehicle(vehicle);
+  return;
+}
+const sample = sampleEdge(vehicle.edge, vehicle.edgePosition);
+const lanePoint = lanePointOnNode(sample, vehicleLaneOffset(vehicle, sample.info) * vehicle.travelDirection);
+const heading = vehicle.travelDirection > 0 ? sample.heading : sample.heading + Math.PI;
+placeVehicleOnTerrain(vehicle, lanePoint, heading);</code></pre>
+    <p><code>sampleEdge</code> linearly interpolates position, right vector and heading between the two nodes either side. <code>lanePointOnNode</code> moves sideways by the lane offset, and multiplying it by <code>travelDirection</code> keeps every car on its own right. <code>placeVehicleOnTerrain</code> takes height and pitch from the terrain; roll is always zero.</p>
+    <p>That is the whole driving model: a bead sliding along a wire. An AI car cannot leave its lane or overshoot a bend, because it has no position of its own, only a place on the road.</p>
+
+    <h2 id="vehicles">Vehicle types and lanes</h2>
+    <p>Each pooled car rolls a type once, when it is created, and keeps it:</p>
+    <table class="reference-table">
+      <thead><tr><th>Type</th><th>Chance</th><th>Size (w × l × h)</th><th>Preferred speed</th></tr></thead>
+      <tbody>
+        <tr><td>Sedan</td><td>42%</td><td>1.92 × 4.25 × 1.38 m</td><td>14 to 30 m/s</td></tr>
+        <tr><td>SUV</td><td>34%</td><td>2.05 × 4.65 × 1.68 m</td><td>13 to 27 m/s</td></tr>
+        <tr><td>Truck</td><td>24%</td><td>2.28 × 6.6 × 2.45 m</td><td>11 to 21 m/s</td></tr>
+      </tbody>
+    </table>
+    <p>48% of sedans are taxi yellow, roughly one car in five overall. Preferred speed is fixed per car, so a slow truck builds a queue behind it, which looks far more natural than uniform speeds.</p>
+    <p>A lane is one number: <code>LANE_OFFSET</code> (2.45 metres) plus up to 22 cm of jitter, or a fixed 4.65 metres on a wide boulevard. There is one lane per direction, so cars never change lanes or overtake.</p>
+
+    <h2 id="junctions">Turning at junctions</h2>
+    <p>When <code>edgePosition</code> runs off either end of the edge, the car has reached a junction and <code>beginVehicleCrossing</code> decides where to go next. There is no route. It picks a random arm, never the road it came in on (no U-turns) and only one whose first segment has finished building:</p>
+<pre><code data-language="js">const exitArms = junction.arms.filter(arm => arm.edge &amp;&amp; arm.edge !== vehicle.edge &amp;&amp;
+  isSegmentBuilt(arm.edge, arm.end === "a" ? 0 : arm.edge.segmentCount - 1));
+if (!exitArms.length) {
+  respawnVehicle(vehicle);
+  return;
+}
+const exitArm = pickRandom(exitArms);</code></pre>
+    <p>The path across the junction is a quadratic Bézier curve. It starts at the car's lane point on the last node of the old road, ends at the matching lane point on the first node of the new road, and uses the <strong>junction centre</strong> as its middle control point. Progress runs from 0 to 1, advanced by speed over an estimated path length (the two straight legs via the centre). Cars cross at 60% of their speed, facing along the curve's tangent:</p>
+<pre><code data-language="js">crossing.progress += (vehicle.speed * JUNCTION_CROSSING_SPEED_FACTOR * dt) / crossing.pathLength;
+...
+const tangent = quadraticBezierTangent(crossing.path, crossing.progress);
+placeVehicleOnTerrain(vehicle, quadraticBezierPoint(crossing.path, crossing.progress), Math.atan2(-tangent.x, -tangent.z));</code></pre>
+    <p>The dots stand for the block that hands the car over to its new edge once <code>progress</code> reaches 1.</p>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 800 420" role="img" aria-labelledby="crossing-svg-title" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">
+        <title id="crossing-svg-title">AI crossing paths: quadratic curves from the arrival lane to each exit lane, all using the junction centre as the control point</title>
+        <g fill="currentColor" fill-opacity="0.08">
+          <circle cx="400" cy="210" r="120"/>
+          <rect x="350" y="320" width="100" height="100"/>
+          <rect x="510" y="160" width="290" height="100"/>
+          <rect x="0" y="160" width="290" height="100"/>
+          <rect x="350" y="0" width="100" height="100"/>
+        </g>
+        <g fill="none" stroke="currentColor" stroke-opacity="0.35" stroke-dasharray="8 8">
+          <line x1="400" y1="330" x2="400" y2="420"/>
+          <line x1="400" y1="0" x2="400" y2="90"/>
+          <line x1="520" y1="210" x2="800" y2="210"/>
+          <line x1="0" y1="210" x2="280" y2="210"/>
+        </g>
+        <g fill="none" stroke="currentColor" stroke-opacity="0.4" stroke-width="1" stroke-dasharray="3 4">
+          <line x1="430" y1="330" x2="400" y2="210"/>
+          <line x1="400" y1="210" x2="520" y2="240"/>
+        </g>
+        <path d="M430 420 L430 330" fill="none" stroke-width="3" style="stroke: var(--accent)"/>
+        <path d="M430 330 Q400 210 520 240 L800 240" fill="none" stroke-width="3" style="stroke: var(--accent)"/>
+        <path d="M430 330 Q400 210 280 180 L0 180" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.75"/>
+        <path d="M430 330 Q400 210 430 90 L430 0" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.75"/>
+        <path d="M430 330 Q430 240 520 240" fill="none" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.5" stroke-dasharray="6 5"/>
+        <path d="M370 330 L370 420" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.3"/>
+        <g fill="currentColor">
+          <circle cx="430" cy="330" r="5"/>
+          <circle cx="400" cy="210" r="5"/>
+          <circle cx="520" cy="240" r="5"/>
+          <circle cx="280" cy="180" r="4" fill-opacity="0.7"/>
+          <circle cx="430" cy="90" r="4" fill-opacity="0.7"/>
+        </g>
+        <g fill="currentColor" font-size="12">
+          <text x="440" y="352">p0: arrival lane point</text>
+          <text x="452" y="196">p1: junction centre</text>
+          <text x="530" y="275">p2: exit lane point</text>
+          <text x="440" y="60" fill-opacity="0.8">straight on bows</text>
+          <text x="440" y="76" fill-opacity="0.8">towards the centre</text>
+          <text x="40" y="160" fill-opacity="0.8">left exit</text>
+          <text x="640" y="232" style="fill: var(--accent)">right exit</text>
+          <text x="470" y="300" fill-opacity="0.6">player assist path</text>
+          <text x="190" y="380" fill-opacity="0.7">arrival road: never chosen</text>
+          <text x="190" y="396" fill-opacity="0.7">as the exit (no U-turns)</text>
+        </g>
+      </svg>
+      <figcaption>Every AI crossing bends towards the junction centre. Compare the dashed curve, the player's own assist path, which bends at the corner where the lane lines meet and so hugs the kerb. Using the centre is simpler and works for any angle, but it makes straight-on cars wobble slightly and right-turners swing wide.</figcaption>
+    </figure>
+
+    <p>There is no right of way. Crossing cars do not check for each other, so two can pass through each other on the pad, though with twelve cars spread over hundreds of metres it is rare.</p>
+
+    <figure class="article-figure">
+      <img src="/site/media/articles/traffic-simulation-junction.jpg" alt="Top-down view of a round junction pad with zebra crossings. One car is halfway across the pad, and on the right-hand road a box truck and a blue sedan drive in opposite lanes" width="1600" height="839" loading="lazy">
+      <figcaption>A junction seen from a camera I pinned above it, with the simulation frozen for the shot. One car is mid-crossing; on the right-hand road a truck and a sedan are in opposite lanes.</figcaption>
+    </figure>
+
+    <h2 id="spacing">Keeping a gap</h2>
+    <p>Two rules stop cars driving through each other on the road. The first is a convoy rule. A car looks for another car on the same edge, going the same way, less than 6.5 segments (27.3 metres) ahead. If it finds one, it drives at no more than 90% of that car's speed:</p>
+<pre><code data-language="js">const gapAheadSegments = (other.edgePosition - vehicle.edgePosition) * vehicle.travelDirection;
+if (gapAheadSegments > 0 &amp;&amp; gapAheadSegments &lt; CONVOY_GAP_SEGMENTS) {
+  vehicle.speed = Math.min(vehicle.speed, other.speed * CONVOY_SPEED_FACTOR);
+}</code></pre>
+    <p>Cars on the same edge are already in one dimension, so this is a subtraction, not geometry. Driving slower than the leader opens the gap, the rule switches off and the follower speeds up again: a gentle concertina.</p>
+    <p>The second rule involves you. <code>distanceAheadInLane</code> checks whether a point is within 18 metres ahead and 2.4 metres sideways, which is roughly "in my lane, close in front". <code>followingSpeedBehind</code> then turns the gap into a safe speed:</p>
+<pre><code data-language="js">function followingSpeedBehind(leaderSpeed, gapMeters, stopGapMeters) {
+  if (gapMeters &lt;= stopGapMeters) return 0;
+  return Math.max(0, leaderSpeed) + (gapMeters - stopGapMeters) * FOLLOW_SPEED_PER_METER_OF_GAP;
+}</code></pre>
+    <p>The safe speed is the leader's speed plus 1.6 m/s for every metre of gap beyond a 7 metre stopping distance (measured centre to centre). <code>yieldToPlayerCar</code> calls it with a leader speed of zero, so an AI car that finds you parked in its lane slows as it closes in and stops 7 metres behind you. The same function runs the other way when Zen steer is on: <code>keepDistanceFromTrafficAhead</code> uses the AI car's speed as the leader speed, so your car settles into following it. In my test drive with cruise and Zen steer on, the nearest AI car sat about 7 metres away for most of the run.</p>
+    <table class="reference-table">
+      <thead><tr><th>Gap to the car ahead</th><th>Safe speed (stationary leader)</th></tr></thead>
+      <tbody>
+        <tr><td>7 m or less</td><td>0 m/s</td></tr>
+        <tr><td>10 m</td><td>4.8 m/s</td></tr>
+        <tr><td>14 m</td><td>11.2 m/s</td></tr>
+        <tr><td>Just under 18 m</td><td>About 17.6 m/s; at 18 m and beyond the rule does not apply</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="spawning">Spawning around the player</h2>
+    <p>Where should a car appear? Not in view right in front of you, and not on a road the renderer has not built. <code>pickSpawnSegment</code> answers both questions with a list the world streamer already keeps. The streamer decides which road segments to build by walking outward along the graph from the car, cheapest first. Every segment it chooses has a <strong>cost</strong>: one per metre of road ahead of you, but 2.6 per metre behind you, so the visible world reaches much further forwards than backwards. Nearby roads within 140 metres are seeded into the walk at their straight-line distance. (The <a href="/site/articles/streaming-world/">streaming article</a> covers the walk in detail.)</p>
+<pre><code data-language="js">function pickSpawnSegment(spawnRange) {
+  const car = state.car;
+  const candidates = visibleStreamItems().filter(item => {
+    if (!item.edge || item.cost &lt; spawnRange.min || item.cost > spawnRange.max) return false;
+    const node = item.edge.nodes[item.segmentIndex];
+    return Math.hypot(node.x - car.x, node.z - car.z) >= spawnRange.minDistanceFromCar;
+  });
+  return candidates.length ? pickRandom(candidates) : null;
+}</code></pre>
+    <p>Cars use a cost window of 70 to 520 and must be at least 45 metres away in a straight line. A chosen car is placed in the middle of that segment, facing a random direction. In practice the upper limit of 520 is never reached. The streamer stops at 180 segments, and in my logged drive the most expensive visible segment had a cost between 205 and 382. So cars really appear from about 70 metres up to the edge of the streamed world ahead, and from 45 metres to somewhere between 80 and 150 metres behind.</p>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 800 250" role="img" aria-labelledby="spawn-svg-title" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">
+        <title id="spawn-svg-title">Spawn windows along the road: vehicles from 70 metres ahead to the end of the streamed road and from 45 metres to roughly 80 to 150 metres behind; pedestrians closer</title>
+        <line x1="20" y1="110" x2="780" y2="110" stroke="currentColor" stroke-opacity="0.4" stroke-width="22"/>
+        <line x1="20" y1="110" x2="780" y2="110" stroke="currentColor" stroke-opacity="0.6" stroke-dasharray="10 10"/>
+        <rect x="236" y="100" width="28" height="20" rx="4" style="fill: var(--accent)"/>
+        <path d="M268 110 l-8 -6 v12 z" style="fill: var(--accent)"/>
+        <g fill="currentColor" fill-opacity="0.25">
+          <rect x="313" y="70" width="380" height="16"/>
+          <rect x="114" y="70" width="86" height="16"/>
+          <rect x="270" y="138" width="230" height="16"/>
+          <rect x="170" y="138" width="65" height="16"/>
+        </g>
+        <rect x="693" y="70" width="80" height="16" fill="currentColor" fill-opacity="0.08"/>
+        <rect x="64" y="70" width="50" height="16" fill="currentColor" fill-opacity="0.08"/>
+        <g fill="currentColor" font-size="12">
+          <text x="313" y="60">cars: cost 70 and up, ahead</text>
+          <text x="30" y="60">cars: 45 to ~80–150 m behind</text>
+          <text x="270" y="176">people: cost 25 and up</text>
+          <text x="120" y="176">people: 18 m+</text>
+          <text x="236" y="210">you</text>
+          <text x="560" y="210" fill-opacity="0.75">ahead: 1 cost per metre</text>
+          <text x="20" y="210" fill-opacity="0.75">behind: 2.6 cost per metre</text>
+          <text x="560" y="230" fill-opacity="0.75">far end: wherever streaming stops</text>
+        </g>
+      </svg>
+      <figcaption>Spawn windows along the road, not to scale. Because behind costs 2.6 times as much, the same cost window covers far less road behind you. The faded ends are where the window runs past the streamed world and so is cut short.</figcaption>
+    </figure>
+
+    <p>Despawning needs no distance check at all. A car that drives onto a segment that is no longer streamed, because you have driven away from it, is respawned somewhere new straight away. So is a car that reaches a junction with no finished exits. The pool is continually recycled from behind you to in front of you, which keeps the twelve cars where you will see them. Spawning uses <code>Math.random</code> rather than the world seed, so traffic is different every run even in the same city.</p>
+
+    <h2 id="pedestrians">Pedestrians</h2>
+    <p>Pedestrians use the same edge-and-position idea, with a lateral offset instead of a lane. They spawn in a closer window (cost 25 to 320, at least 18 metres away), on a sidewalk 0.95 metres beyond the road edge, and walk at 1.55 to 2.7 m/s. On spawning, 55% of them become crossers:</p>
+<pre><code data-language="js">if (pedestrian.crossing) {
+  pedestrian.lat += pedestrian.dirLat * pedestrian.walkSpeed * dt;
+  if (pedestrian.lat > sidewalkLat) { pedestrian.lat = sidewalkLat; pedestrian.dirLat = -1; }
+  else if (pedestrian.lat &lt; -sidewalkLat) { pedestrian.lat = -sidewalkLat; pedestrian.dirLat = 1; }
+  return;
+}
+pedestrian.lat = (pedestrian.lat >= 0 ? 1 : -1) * sidewalkLat;
+pedestrian.edgePosition += (pedestrian.alongDir * pedestrian.walkSpeed * dt) / SEG_LENGTH;</code></pre>
+    <p>A crosser walks from one sidewalk to the other and back again, indefinitely, until its segment stops being streamed. Everyone else walks along the sidewalk and respawns when they reach the last half segment before a junction. Crossers are what make Zen steer brake for people: <code>keepDistanceFromTrafficAhead</code> treats them as stationary leaders with a 4 metre stopping gap. If you drive into one manually, your car simply stops dead, as the <a href="/site/articles/car-physics/">car physics article</a> describes.</p>
+
+    <h2 id="rendering">Drawing them every frame</h2>
+    <p>None of the traffic uses instancing or a separate pipeline. Each frame, <code>uploadDynamicDriveMesh</code> rebuilds one array of triangles on the CPU, containing the lake surface, the player's car, the visible traffic, the pedestrians and any particles, and copies it into the GPU with a single <code>writeBuffer</code>:</p>
+<pre><code data-language="js">function uploadDynamicDriveMesh(car, renderer, biome) {
+  const visibleTraffic = state.trafficEnabled ? state.traffic.filter(vehicle => vehicle.mode !== "hidden") : [];
+  const visiblePedestrians = state.trafficEnabled ? state.pedestrians.filter(pedestrian => !pedestrian.hidden) : [];
+  const groundVertexCount = pushLakeSurface(dynamicCarBuffer, 0, car, biome.waterColor || LAKE_FALLBACK_COLOR);
+  const vertexCount = buildCarAndParticlesMesh(car, visibleTraffic, visiblePedestrians, particles, dynamicCarBuffer, state.cameraMode, groundVertexCount);
+  renderer.uploadDynamicMesh(dynamicCarBuffer, vertexCount);
+  return { groundVertexCount, vertexCount };
+}</code></pre>
+    <p>Every AI car is built from boxes in world space. A sedan or SUV is a body box, a glass cabin box and a roof box; a truck is a coloured cab, a glass windscreen and a pale cargo box. Each also gets two headlights and two tail lights using the glowing material, four wheel boxes rotated by <code>wheelSpin</code>, and a dark quad underneath as a cheap contact shadow. That comes to 134 triangles, and the constant <code>TRAFFIC_VEHICLE_FLOAT_HEADROOM</code> reserves exactly that much space before each car is added, so a full buffer drops whole cars rather than overflowing. A pedestrian is six boxes and a shadow quad, 74 triangles, with legs and arms swinging by <code>sin(walkPhase)</code>.</p>
+    <p>I measured the real sizes in the browser:</p>
+    <table class="reference-table">
+      <thead><tr><th>Part of the dynamic mesh</th><th>Vertices</th></tr></thead>
+      <tbody>
+        <tr><td>Lake surface</td><td>600</td></tr>
+        <tr><td>Player's car</td><td>3,738</td></tr>
+        <tr><td>One AI car</td><td>402</td></tr>
+        <tr><td>One pedestrian</td><td>222</td></tr>
+        <tr><td>Full scene: 12 cars and 8 people</td><td>10,938, about 656 KB at 60 bytes per vertex</td></tr>
+      </tbody>
+    </table>
+    <p>The buffer has room for 16,200 vertices, at the end of the same vertex buffer that holds the 180 streamed road pieces. Rebuilding the player's car, the traffic, the people and the particles took about 0.38 ms in headless Chrome on an Apple-silicon Mac, and a traffic update about 9 microseconds. Uploading 656 KB a frame sounds wasteful, but it is one copy, and it buys complete freedom: no per-car uniforms, no instance buffers and no extra pipelines.</p>
+    <p>On the GPU side, <code>drawWorldMeshes</code> draws all the cars, people and particles with one <code>pass.draw</code> call, using the same pipeline and shaders as the buildings. The same function is used by the depth pre-pass, the main pass and, when it runs, the sun shadow pass, so AI cars get real shadows and lighting with no extra code.</p>
+
+    <h2 id="toggle">The T key</h2>
+    <p>Traffic starts switched off. T, or the Traffic button, runs <code>toggleTrafficAndPeople</code>, which flips <code>state.trafficEnabled</code>, updates the button, and clears any collision warning when switching off. Everything else follows from checks of that one flag elsewhere:</p>
+    <ul>
+      <li><code>updateSimulation</code> only calls <code>updateTrafficAndPedestrians</code> when it is on.</li>
+      <li><code>uploadDynamicDriveMesh</code> passes empty lists to the mesh builder when it is off, so nothing is drawn.</li>
+      <li>The player's collision tests against vehicles and pedestrians, and Zen steer's following rule, are skipped when it is off.</li>
+    </ul>
+    <p>Switching off does not reset anything. Every car freezes where it was, invisible. Switch traffic back on and they carry on from those spots; any car whose road has since been unloaded respawns near you on the next frame, because the streamed-segment check runs before it is placed.</p>
+
+    <section class="article-takeaways" aria-labelledby="takeaways-heading">
+      <h2 id="takeaways-heading">Key takeaways</h2>
+      <ul>
+        <li>An AI car is an edge, a position along it and a direction. Turning that into a world position is two interpolations.</li>
+        <li>Recompute speed from scratch every frame: start at the preferred speed and only ever reduce it.</li>
+        <li>Junctions need only a random exit and one quadratic Bézier curve through the centre.</li>
+        <li>One gap rule, leader speed plus 1.6 m/s per metre beyond 7 metres, serves AI cars yielding to you and you following them.</li>
+        <li>Reuse the streamer's cost-ranked segment list to spawn just out of sight, and respawn whenever a car leaves the streamed roads.</li>
+        <li>Rebuilding a few thousand vertices on the CPU each frame and drawing them in one call is simple and fast enough.</li>
+      </ul>
+    </section>
+
+    <h2 id="limits">Limitations</h2>
+    <p>The system is deliberately small, and it shows in places:</p>
+    <ul>
+      <li><strong>No acceleration.</strong> Because speed is recomputed each frame, an AI car that suddenly finds you in front of it can drop from cruising speed to a standstill in one frame.</li>
+      <li><strong>No right of way.</strong> Crossing cars ignore each other, and the convoy rule only applies on the same edge, so cars can overlap on a junction pad.</li>
+      <li><strong>AI cars ignore pedestrians.</strong> Only the player's car brakes for people. AI cars drive through crossers.</li>
+      <li><strong>Uneven crossing speed.</strong> Bézier progress is not proportional to distance travelled, and the path length is the length of the two straight legs, so cars move at slightly varying speed through a turn.</li>
+      <li><strong>Random routes.</strong> Exits are random, so a car can turn left at one junction and right at the next. There is no route, no destination and no traffic signal logic, even though the scenery has traffic lights.</li>
+    </ul>
+    <p>None of these were worth fixing for a relaxing drive. Twelve cars that never need debugging, never leave their lanes and always stay near you do more for the feeling of a living city than a few hundred cars with real behaviour would. To see them, <a href="/site/games/city-drive/">play City Drive</a> and press T.</p>
+
+    <nav class="article-pager" aria-label="More articles">
+      <a href="/site/articles/car-physics/" rel="prev"><small>Previous article</small>Car physics without a physics engine</a>
+      <a href="/site/articles/sun-shadows/" rel="next"><small>Next article</small>Sun shadows, explained</a>
+    </nav>
+  </article>
+</main>
+{{include footer.html}}
+</body>
+</html>

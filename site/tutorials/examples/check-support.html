@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lesson" content="/site/tutorials/webgpu-intro/">
+<title>WebGPU example: Check browser support</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0f12; color: #e6e8eb; font: 18px/1.6 system-ui, sans-serif; }
+  main { padding: 1.5rem; }
+  .yes { color: #7cf29c; }
+  .no { color: #f87171; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Does this browser support WebGPU?</h1>
+  <p id="result">Checking…</p>
+</main>
+<script type="module">
+const result = document.getElementById("result");
+
+if (!navigator.gpu) {
+  result.className = "no";
+  result.textContent = "No. navigator.gpu does not exist in this browser.";
+} else {
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) {
+    result.className = "no";
+    result.textContent = "WebGPU exists, but no GPU adapter is available.";
+  } else {
+    const vendor = adapter.info.vendor || "unknown vendor";
+    const architecture = adapter.info.architecture || "unknown architecture";
+    result.className = "yes";
+    result.textContent = `Yes! GPU: ${vendor}, ${architecture}.`;
+  }
+}
+</script>
+</body>
+</html>

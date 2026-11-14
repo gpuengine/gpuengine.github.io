@@ -1,0 +1,181 @@
+{
+  "resource_groups": [
+    {
+      "id": "specifications",
+      "title": "WebGPU and WGSL specifications",
+      "lead": "The standards every browser implements, written by the W3C GPU for the Web Working Group. When documentation disagrees, the specification is the final word.",
+      "links": [
+        ["WebGPU specification", "https://www.w3.org/TR/webgpu/", "The W3C standard for the WebGPU API: adapters, devices, buffers, textures, pipelines, passes and every validation rule."],
+        ["WGSL specification", "https://www.w3.org/TR/WGSL/", "The WebGPU Shading Language standard: types, memory layout, address spaces, built-in values and functions."],
+        ["WebGPU editor's draft", "https://gpuweb.github.io/gpuweb/", "The latest working version of the specification, updated as changes land, ahead of the published W3C version."],
+        ["WebGPU explainer", "https://gpuweb.github.io/gpuweb/explainer/", "Why WebGPU is designed the way it is: security, portability, the object model and the reasoning behind each choice."],
+        ["GPU for the Web Working Group", "https://www.w3.org/groups/wg/gpu/", "The W3C group that develops WebGPU and WGSL, with its charter, participants and publications."],
+        ["gpuweb on GitHub", "https://github.com/gpuweb/gpuweb", "Where the specification is written: issues, proposals for new features and discussion with browser engineers."]
+      ]
+    },
+    {
+      "id": "documentation",
+      "title": "Official WebGPU documentation",
+      "lead": "Reference and guides from browser makers and MDN, with an entry for every interface, method and dictionary in the API.",
+      "links": [
+        ["MDN: WebGPU API", "https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API", "Mozilla's reference for every WebGPU interface, with concepts, examples and browser compatibility tables."],
+        ["Chrome for Developers: WebGPU overview", "https://developer.chrome.com/docs/web-platform/webgpu/overview", "Google's guide to WebGPU in Chrome: getting started, new features in each release and platform notes."],
+        ["From WebGL to WebGPU", "https://developer.chrome.com/docs/web-platform/webgpu/from-webgl-to-webgpu", "Chrome's guide for WebGL developers: how contexts, buffers, uniforms, shaders and draw calls map to WebGPU."],
+        ["WebGPU troubleshooting tips", "https://developer.chrome.com/docs/web-platform/webgpu/troubleshooting-tips", "Why navigator.gpu can be missing or requestAdapter can return null, and how to fix it in Chrome."],
+        ["WebGPU TypeScript types", "https://github.com/gpuweb/types", "The official TypeScript definitions for WebGPU (@webgpu/types), maintained alongside the specification."]
+      ]
+    },
+    {
+      "id": "browser-support",
+      "title": "WebGPU browser support",
+      "lead": "WebGPU ships in Chrome, Edge and Safari, and in Firefox on Windows. These pages track exactly which versions and platforms support it.",
+      "links": [
+        ["Can I use: WebGPU", "https://caniuse.com/webgpu", "Browser and version support for WebGPU across desktop and mobile, with notes on flags and platforms."],
+        ["WebGPU implementation status", "https://github.com/gpuweb/gpuweb/wiki/Implementation-Status", "The working group's own table of where each browser engine ships WebGPU and on which operating systems."],
+        ["WebGPU supported in major browsers", "https://web.dev/blog/webgpu-supported-major-browsers", "web.dev's announcement of WebGPU shipping across Chrome, Edge, Firefox and Safari, with what it means for developers."],
+        ["Chrome ships WebGPU", "https://developer.chrome.com/blog/webgpu-release", "The Chrome 113 release post that brought WebGPU to the stable web on Windows, macOS and ChromeOS."],
+        ["WebGPU Report", "https://webgpureport.org/", "Shows your own browser's WebGPU adapter, features and limits, handy when a demo does not run on one machine."]
+      ]
+    },
+    {
+      "id": "samples",
+      "title": "Official samples and learning material",
+      "lead": "Runnable examples and guides written or reviewed by people who work on the specification and the browsers.",
+      "links": [
+        ["WebGPU Samples", "https://webgpu.github.io/webgpu-samples/", "The official sample collection: triangles, textured cubes, instancing, shadow mapping, compute particles, deferred rendering and more."],
+        ["Tour of WGSL", "https://google.github.io/tour-of-wgsl/", "An interactive walk through the WGSL language, one feature per page, with code you can edit and run."],
+        ["WebGPU best practices", "https://toji.dev/webgpu-best-practices/", "Practical advice from a WebGPU specification editor on buffers, bind groups, image uploads and error handling."],
+        ["WebGPU Fundamentals", "https://webgpufundamentals.org/", "A widely used community tutorial series that explains WebGPU from first principles, with many live examples."]
+      ]
+    },
+    {
+      "id": "implementations",
+      "title": "WebGPU implementations",
+      "lead": "The open-source engines inside the browsers. Both also run outside the browser, so WebGPU code ideas carry over to native apps.",
+      "links": [
+        ["Dawn", "https://dawn.googlesource.com/dawn", "The C++ WebGPU implementation used by Chrome and Edge, translating WebGPU to Vulkan, Metal and Direct3D 12."],
+        ["wgpu", "https://github.com/gfx-rs/wgpu", "The Rust WebGPU implementation used by Firefox, also a popular native graphics library on every desktop and mobile platform."]
+      ]
+    },
+    {
+      "id": "native-gpu-apis",
+      "title": "The GPU APIs underneath WebGPU",
+      "lead": "WebGPU is modelled on modern native graphics APIs and runs on top of them. Their documentation explains what the GPU is actually doing.",
+      "links": [
+        ["Vulkan", "https://www.vulkan.org/", "Khronos' cross-platform GPU API, which WebGPU uses on Windows, Linux, Android and ChromeOS."],
+        ["Vulkan documentation", "https://docs.vulkan.org/", "The Vulkan specification, guide and samples, useful for understanding pipelines, synchronisation and memory."],
+        ["Apple Metal", "https://developer.apple.com/metal/", "Apple's GPU API, which WebGPU uses on macOS and iOS, with tools, sample code and performance guides."],
+        ["Direct3D 12 programming guide", "https://learn.microsoft.com/en-us/windows/win32/direct3d12/directx-12-programming-guide", "Microsoft's guide to Direct3D 12, which WebGPU uses on Windows."],
+        ["WebGL", "https://www.khronos.org/webgl/", "The Khronos home of WebGL, the browser graphics API that came before WebGPU."],
+        ["MDN: WebGL API", "https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API", "Mozilla's WebGL reference and tutorials, useful when porting older code to WebGPU."],
+        ["Khronos Group", "https://www.khronos.org/", "The standards body behind Vulkan, OpenGL, WebGL, glTF and SPIR-V."]
+      ]
+    },
+    {
+      "id": "gpu-vendors",
+      "title": "GPU vendor developer resources",
+      "lead": "Profilers, debuggers and performance guides from the companies that make the GPUs your WebGPU code runs on.",
+      "links": [
+        ["NVIDIA Developer", "https://developer.nvidia.com/", "NVIDIA's developer hub: graphics and compute documentation, SDKs and performance guides for GeForce and RTX GPUs."],
+        ["NVIDIA Nsight Graphics", "https://developer.nvidia.com/nsight-graphics", "A frame debugger and profiler for Vulkan and Direct3D 12, the APIs WebGPU runs on in Chrome."],
+        ["AMD GPUOpen", "https://gpuopen.com/", "AMD's open-source tools, libraries and in-depth articles on how Radeon GPUs execute shaders."],
+        ["Radeon GPU Profiler", "https://gpuopen.com/rgp/", "AMD's low-level profiler that shows how each draw and dispatch occupies the GPU."],
+        ["Apple Metal documentation", "https://developer.apple.com/documentation/metal", "Apple's Metal reference, including GPU capture and profiling in Xcode for Apple silicon."]
+      ]
+    }
+  ],
+  "page_links": {
+    "site/tutorials/webgpu-intro/": [
+      ["MDN: WebGPU API", "https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API", "Concepts, interfaces and browser compatibility for the whole API."],
+      ["MDN: navigator.gpu", "https://developer.mozilla.org/en-US/docs/Web/API/Navigator/gpu", "The entry point used to check whether a browser supports WebGPU."],
+      ["WebGPU specification: introduction", "https://www.w3.org/TR/webgpu/#intro", "What WebGPU is for, in the words of the W3C standard."],
+      ["Can I use: WebGPU", "https://caniuse.com/webgpu", "Which browser versions and platforms support WebGPU today."]
+    ],
+    "site/tutorials/first-triangle/": [
+      ["MDN: GPUAdapter.requestDevice()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUAdapter/requestDevice", "Getting a device, with the optional features and limits you can ask for."],
+      ["MDN: GPUCanvasContext.configure()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUCanvasContext/configure", "Connecting a canvas to the device, with format and alpha mode options."],
+      ["MDN: GPUDevice.createRenderPipeline()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createRenderPipeline", "Every field of the render pipeline descriptor."],
+      ["WebGPU specification: render passes", "https://www.w3.org/TR/webgpu/#render-passes", "How render passes, attachments, load and store operations work."]
+    ],
+    "site/tutorials/wgsl-basics/": [
+      ["WGSL specification: types", "https://www.w3.org/TR/WGSL/#types", "Scalars, vectors, matrices, arrays and structures, defined precisely."],
+      ["WGSL specification: functions", "https://www.w3.org/TR/WGSL/#functions", "Function declarations, parameters, return values and entry points."],
+      ["Tour of WGSL", "https://google.github.io/tour-of-wgsl/", "An interactive tour of the language, one feature at a time."],
+      ["MDN: GPUDevice.createShaderModule()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createShaderModule", "Compiling WGSL source into a shader module and reading its errors."]
+    ],
+    "site/tutorials/vertex-buffers/": [
+      ["MDN: GPUDevice.createBuffer()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createBuffer", "Buffer sizes, usage flags and mapping at creation."],
+      ["MDN: GPUQueue.writeBuffer()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUQueue/writeBuffer", "Uploading data from JavaScript typed arrays to a GPU buffer."],
+      ["MDN: GPURenderPassEncoder.drawIndexed()", "https://developer.mozilla.org/en-US/docs/Web/API/GPURenderPassEncoder/drawIndexed", "Drawing with an index buffer, including base vertex and instance offsets."],
+      ["WebGPU specification: vertex state", "https://www.w3.org/TR/webgpu/#vertex-state", "Vertex buffer layouts, attributes, formats, offsets and strides."]
+    ],
+    "site/tutorials/uniforms-bind-groups/": [
+      ["MDN: GPUDevice.createBindGroup()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createBindGroup", "Binding buffers, textures and samplers to a shader."],
+      ["MDN: GPUDevice.createBindGroupLayout()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createBindGroupLayout", "Describing bindings explicitly so pipelines can share bind groups."],
+      ["MDN: GPURenderPassEncoder.setBindGroup()", "https://developer.mozilla.org/en-US/docs/Web/API/GPURenderPassEncoder/setBindGroup", "Selecting which bind group a draw uses, with dynamic offsets."],
+      ["WGSL specification: alignment and size", "https://www.w3.org/TR/WGSL/#alignment-and-size", "The exact alignment and padding rules for uniform structs."]
+    ],
+    "site/tutorials/camera-matrices/": [
+      ["MDN: model, view and projection", "https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/WebGL_model_view_projection", "The maths behind 3D cameras, explained step by step. It applies to WebGPU too."],
+      ["WGSL specification: matrix types", "https://www.w3.org/TR/WGSL/#matrix-types", "mat4x4f and the other matrix types, stored column by column."],
+      ["MDN: GPUQueue.writeBuffer()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUQueue/writeBuffer", "Updating a matrix uniform every frame."]
+    ],
+    "site/tutorials/depth-buffer/": [
+      ["WebGPU specification: depth/stencil state", "https://www.w3.org/TR/webgpu/#depth-stencil-state", "Depth compare functions, depth writes and bias in a pipeline."],
+      ["WebGPU specification: depth formats", "https://www.w3.org/TR/webgpu/#depth-formats", "depth24plus, depth32float and the other depth and stencil formats."],
+      ["MDN: GPUDevice.createTexture()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createTexture", "Creating the depth texture with the right size, format and usage."],
+      ["MDN: GPUCommandEncoder.beginRenderPass()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUCommandEncoder/beginRenderPass", "Attaching the depth texture with depthStencilAttachment."]
+    ],
+    "site/tutorials/textures-samplers/": [
+      ["MDN: GPUDevice.createTexture()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createTexture", "Texture sizes, formats, mip levels and usage flags."],
+      ["MDN: GPUDevice.createSampler()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createSampler", "Filtering, address modes and anisotropy."],
+      ["MDN: GPUQueue.copyExternalImageToTexture()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUQueue/copyExternalImageToTexture", "Uploading images, canvases and video frames to the GPU."],
+      ["WGSL specification: textureSample", "https://www.w3.org/TR/WGSL/#texturesample", "The built-in that reads a filtered texel in a fragment shader."]
+    ],
+    "site/tutorials/instancing/": [
+      ["MDN: GPURenderPassEncoder.draw()", "https://developer.mozilla.org/en-US/docs/Web/API/GPURenderPassEncoder/draw", "The instanceCount and firstInstance arguments that make instancing work."],
+      ["WebGPU specification: instance step mode", "https://www.w3.org/TR/webgpu/#dom-gpuvertexstepmode-instance", "Vertex buffers that advance once per instance instead of once per vertex."],
+      ["WGSL specification: instance_index", "https://www.w3.org/TR/WGSL/#instance-index-builtin-value", "The built-in value that tells a vertex shader which instance it is drawing."]
+    ],
+    "site/tutorials/compute-shaders/": [
+      ["MDN: GPUDevice.createComputePipeline()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createComputePipeline", "Creating a pipeline from a compute shader entry point."],
+      ["MDN: GPUComputePassEncoder.dispatchWorkgroups()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUComputePassEncoder/dispatchWorkgroups", "Launching a grid of workgroups."],
+      ["MDN: GPUBuffer.mapAsync()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUBuffer/mapAsync", "Reading results back from the GPU to JavaScript."],
+      ["WGSL specification: compute shader workgroups", "https://www.w3.org/TR/WGSL/#compute-shader-workgroups", "How workgroups, invocations and their built-in IDs relate."]
+    ],
+    "site/tutorials/shadow-mapping/": [
+      ["WebGPU specification: sampler compare", "https://www.w3.org/TR/webgpu/#dom-gpusamplerdescriptor-compare", "Comparison samplers, which turn a depth texture into a shadow test."],
+      ["WGSL specification: textureSampleCompare", "https://www.w3.org/TR/WGSL/#texturesamplecompare", "The built-in that compares a reference depth against the shadow map."],
+      ["MDN: GPUDevice.createSampler()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createSampler", "Setting compare and filtering for smooth shadow edges."],
+      ["WebGPU Samples", "https://webgpu.github.io/webgpu-samples/", "The official sample collection, including a complete shadow mapping demo."]
+    ],
+    "site/tutorials/post-processing/": [
+      ["MDN: GPUTexture.createView()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUTexture/createView", "Views that let one texture be rendered to, then sampled."],
+      ["MDN: GPUCommandEncoder.beginRenderPass()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUCommandEncoder/beginRenderPass", "Rendering into an offscreen texture instead of the canvas."],
+      ["WebGPU specification: render passes", "https://www.w3.org/TR/webgpu/#render-passes", "Attachments, load and store operations between passes."],
+      ["WebGPU Samples", "https://webgpu.github.io/webgpu-samples/", "Official examples of image blur and other multi-pass effects."]
+    ],
+    "site/articles/webgpu-vs-webgl/": [
+      ["From WebGL to WebGPU", "https://developer.chrome.com/docs/web-platform/webgpu/from-webgl-to-webgpu", "Chrome's official guide to the differences between the two APIs."],
+      ["MDN: WebGPU API", "https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API", "The full WebGPU reference."],
+      ["MDN: WebGL API", "https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API", "The full WebGL reference."],
+      ["WebGPU best practices", "https://toji.dev/webgpu-best-practices/", "How to structure WebGPU code to get the performance benefits."]
+    ],
+    "site/articles/gpu-text-search/": [
+      ["MDN: GPUDevice.createComputePipeline()", "https://developer.mozilla.org/en-US/docs/Web/API/GPUDevice/createComputePipeline", "Compute pipelines, the basis of GPU search."],
+      ["WebGPU specification: buffer mapping", "https://www.w3.org/TR/webgpu/#buffer-mapping", "The rules for reading GPU results back to JavaScript."],
+      ["WGSL specification: compute shader workgroups", "https://www.w3.org/TR/WGSL/#compute-shader-workgroups", "How invocations are grouped and identified."]
+    ],
+    "site/articles/sun-shadows/": [
+      ["WebGPU specification: sampler compare", "https://www.w3.org/TR/webgpu/#dom-gpusamplerdescriptor-compare", "Comparison samplers used for shadow lookups."],
+      ["WGSL specification: textureSampleCompare", "https://www.w3.org/TR/WGSL/#texturesamplecompare", "The shadow map comparison built-in."],
+      ["WebGPU specification: depth formats", "https://www.w3.org/TR/webgpu/#depth-formats", "Depth texture formats for shadow maps."]
+    ],
+    "site/wgpu3d/": [
+      ["MDN: WebGPU API", "https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API", "The browser API wgpu3d is built on."],
+      ["Can I use: WebGPU", "https://caniuse.com/webgpu", "Which browsers can run wgpu3d scenes."],
+      ["WebGPU troubleshooting tips", "https://developer.chrome.com/docs/web-platform/webgpu/troubleshooting-tips", "What to check when isSupported() returns false."],
+      ["WebGPU specification", "https://www.w3.org/TR/webgpu/", "The W3C standard behind every call wgpu3d makes."]
+    ]
+  }
+}

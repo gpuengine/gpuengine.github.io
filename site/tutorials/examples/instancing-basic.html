@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="lesson" content="/site/tutorials/instancing/">
+<title>WebGPU example: A grid of instances</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0f12; color: #e6e8eb; font-family: system-ui, sans-serif; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .message { padding: 1.5rem; }
+</style>
+</head>
+<body>
+<canvas></canvas>
+<script type="module">
+const adapter = await navigator.gpu?.requestAdapter();
+if (!adapter) {
+  document.body.innerHTML = '<p class="message">This example needs a browser with WebGPU.</p>';
+  throw new Error("WebGPU is not available");
+}
+const device = await adapter.requestDevice();
+const canvas = document.querySelector("canvas");
+canvas.width = canvas.clientWidth * devicePixelRatio;
+canvas.height = canvas.clientHeight * devicePixelRatio;
+const context = canvas.getContext("webgpu");
+const format = navigator.gpu.getPreferredCanvasFormat();
+context.configure({ device, format });
+
+const COLUMNS = 16;
+const ROWS = 9;
+
+const shaderModule = device.createShaderModule({
+  code: `
+    const COLUMNS = ${COLUMNS}u;
+    const ROWS = ${ROWS}u;
+
+    struct VertexOutput {
+      @builtin(position) position: vec4f,
+      @location(0) color: vec3f,
+    }
+
+    @vertex
+    fn vertexMain(
+      @builtin(vertex_index) vertexIndex: u32,
+      @builtin(instance_index) instanceIndex: u32
+    ) -> VertexOutput {
+      let corners = array(
+        vec2f(0.0, 0.0), vec2f(1.0, 0.0), vec2f(1.0, 1.0),
+        vec2f(0.0, 0.0), vec2f(1.0, 1.0), vec2f(0.0, 1.0)
+      );
+      let column = instanceIndex % COLUMNS;
+      let row = instanceIndex / COLUMNS;
+      let cellSize = vec2f(2.0 / f32(COLUMNS), 2.0 / f32(ROWS));
+      let margin = 0.1;
+      let corner = corners[vertexIndex] * (1.0 - 2.0 * margin) + margin;
+      let cell = vec2f(f32(column), f32(row));
+      var output: VertexOutput;
+      output.position = vec4f((cell + corner) * cellSize - 1.0, 0.0, 1.0);
+      output.color = vec3f(f32(column) / f32(COLUMNS - 1u), f32(row) / f32(ROWS - 1u), 0.8);
+      return output;
+    }
+
+    @fragment
+    fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+      return vec4f(input.color, 1.0);
+    }
+  `
+});
+
+const pipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module: shaderModule, entryPoint: "vertexMain" },
+  fragment: { module: shaderModule, entryPoint: "fragmentMain", targets: [{ format }] }
+});
+
+const VERTICES_PER_SQUARE = 6;
+const encoder = device.createCommandEncoder();
+const pass = encoder.beginRenderPass({
+  colorAttachments: [{
+    view: context.getCurrentTexture().createView(),
+    clearValue: { r: 0.05, g: 0.06, b: 0.07, a: 1 },
+    loadOp: "clear",
+    storeOp: "store"
+  }]
+});
+pass.setPipeline(pipeline);
+pass.draw(VERTICES_PER_SQUARE, COLUMNS * ROWS);
+pass.end();
+device.queue.submit([encoder.finish()]);
+</script>
+</body>
+</html>
